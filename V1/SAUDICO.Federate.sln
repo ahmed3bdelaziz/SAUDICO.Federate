@@ -1,0 +1,28 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.ACC", "src\SAUDICO.Federate.ACC\SAUDICO.Federate.ACC.csproj", "{64B133E6-88EE-5FA7-867E-8AB837F4BA86}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Core", "src\SAUDICO.Federate.Core\SAUDICO.Federate.Core.csproj", "{B5154EFA-BCF4-5DFA-A210-6B82FAC5AB17}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Export", "src\SAUDICO.Federate.Export\SAUDICO.Federate.Export.csproj", "{38D4B448-3839-5DFB-B674-06B1F54AE484}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Logging", "src\SAUDICO.Federate.Logging\SAUDICO.Federate.Logging.csproj", "{4A3277F7-A8C2-5AF0-AB6C-9D700BA34F2D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Revit2024", "src\SAUDICO.Federate.Revit2024\SAUDICO.Federate.Revit2024.csproj", "{B47F9F9E-2C2E-523B-9EC5-F23DF45D36AA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Revit2025", "src\SAUDICO.Federate.Revit2025\SAUDICO.Federate.Revit2025.csproj", "{0F8684C2-699C-5949-AC63-4F919D208F4F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Shared", "src\SAUDICO.Federate.Shared\SAUDICO.Federate.Shared.csproj", "{A327B97D-156E-5EBB-AAC4-AFEFB0720DAB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.UI", "src\SAUDICO.Federate.UI\SAUDICO.Federate.UI.csproj", "{DBBCD536-09CC-51C8-AB39-75D8B1A153FF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAUDICO.Federate.Tests", "tests\SAUDICO.Federate.Tests\SAUDICO.Federate.Tests.csproj", "{19492F01-830C-51D8-A01B-E6910579FE4D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+EndGlobal

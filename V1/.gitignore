@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+dist/
+TestResults/
+build-*.log

@@ -1,0 +1,14 @@
+name: source-validation
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify no ACC project
+        shell: pwsh
+        run: |
+          if (Get-ChildItem -Recurse -File | Select-String -SimpleMatch "Federate cloud module") { throw "ACC reference detected" }
+      - name: Verify project XML
+        shell: pwsh
+        run: Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object { [xml](Get-Content $_.FullName) | Out-Null }

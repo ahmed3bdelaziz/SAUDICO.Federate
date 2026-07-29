@@ -1,0 +1,2 @@
+using System;using System.Text.RegularExpressions;namespace SAUDICO.Federate.ACC;
+public static class AccUrlParser { static readonly Regex GuidRx=new Regex(@"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",RegexOptions.Compiled);public static bool TryParse(string url,out Guid project,out Guid model){project=Guid.Empty;model=Guid.Empty;if(string.IsNullOrWhiteSpace(url))return false;var m=GuidRx.Matches(url);return m.Count>=2&&Guid.TryParse(m[0].Value,out project)&&Guid.TryParse(m[1].Value,out model);} }

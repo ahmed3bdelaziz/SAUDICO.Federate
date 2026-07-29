@@ -1,0 +1,1 @@
+<RevitAddIns><AddIn Type="Application"><Name>SAUDICO Federate</Name><Assembly>SAUDICO.Federate\SAUDICO.Federate.Revit2024.dll</Assembly><AddInId>14D533F2-45F8-40BA-9D93-C1AC0389B41D</AddInId><FullClassName>SAUDICO.Federate.Revit2024.App</FullClassName><VendorId>SAUDICO</VendorId><VendorDescription>Saudi Constructioneers Ltd.</VendorDescription></AddIn></RevitAddIns>

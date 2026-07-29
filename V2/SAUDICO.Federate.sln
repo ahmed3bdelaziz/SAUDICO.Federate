@@ -1,0 +1,16 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Core", "src\Core\Core.csproj", "{252A8286-899D-4316-8E5C-472819578F98}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Export", "src\Export\Export.csproj", "{BB181CBB-5E0D-409A-A776-5B83EDE004C7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Revit2024", "src\Revit2024\Revit2024.csproj", "{F6FE89BD-C373-409D-8907-5A55527C5D90}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Revit2025", "src\Revit2025\Revit2025.csproj", "{D1D67AF0-CCC9-4449-B55D-1D06B2031E0C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "src\Shared\Shared.csproj", "{450026D2-B700-4D49-B445-14372E0502C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UI", "src\UI\UI.csproj", "{2140691B-A798-4DC1-9A78-3E257B77BB5F}"
+EndProject
+Global
+EndGlobal

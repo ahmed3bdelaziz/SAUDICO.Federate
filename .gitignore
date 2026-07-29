@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+build-*.log
+test-*.log
+config/apssettings.local.json
+.claude/settings.local.json

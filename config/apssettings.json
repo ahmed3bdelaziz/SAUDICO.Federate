@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "environment": "Development",
+  "enabled": false,
+  "clientId": "",
+  "callbackUri": "http://localhost:8080/",
+  "authorizationEndpoint": "https://developer.api.autodesk.com/authentication/v2/authorize",
+  "tokenEndpoint": "https://developer.api.autodesk.com/authentication/v2/token",
+  "userProfileEndpoint": "https://api.userprofile.autodesk.com/userinfo",
+  "scopes": [
+    "data:read",
+    "user-profile:read",
+    "openid"
+  ]
+}

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><UseWPF>true</UseWPF><RevitApi>true</RevitApi><AssemblyName>SAUDICO.Federate.Revit2024</AssemblyName></PropertyGroup><ItemGroup><ProjectReference Include="..\UI\UI.csproj"/><ProjectReference Include="..\Export\Export.csproj"/><ProjectReference Include="..\Core\Core.csproj"/><ProjectReference Include="..\Shared\Shared.csproj"/><ProjectReference Include="..\SAUDICO.Federate.Logging\SAUDICO.Federate.Logging.csproj"/></ItemGroup>  <ItemGroup>
+    <Resource Include="Resources\*.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\config\apssettings.json" Link="config\apssettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="System.Security" />
+  </ItemGroup>
+</Project>
