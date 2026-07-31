@@ -38,12 +38,31 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
 
     public async Task<IReadOnlyList<AccBrowseNode>> GetHubsAsync(CancellationToken cancellationToken)
     {
-        List<AccBrowseNode> hubs = await CollectPagesAsync(
-            $"{BaseUrl}/project/v1/hubs",
-            root => ParseSimpleNodes(root, "hubs", AccNodeKind.Hub),
-            cancellationToken).ConfigureAwait(false);
+        Log.Information("ACC Data Management marker: HubLoadStarted");
 
-        Log.Information("ACC Data Management: fetched {Count} hub(s)", hubs.Count);
+        List<AccBrowseNode> hubs;
+        try
+        {
+            hubs = await CollectPagesAsync(
+                $"{BaseUrl}/project/v1/hubs",
+                root => ParseSimpleNodes(root, "hubs", AccNodeKind.Hub),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (AccDataManagementException ex)
+        {
+            ApsApiException? apiEx = ex.InnerException as ApsApiException;
+            Log.Warning(
+                "ACC Data Management marker: HubLoadFailed StatusCode={StatusCode} ErrorCode={ErrorCode}",
+                apiEx?.StatusCode, apiEx?.ApsErrorCode ?? ex.InnerException?.GetType().Name);
+            throw;
+        }
+
+        if (hubs.Count == 0)
+        {
+            Log.Information("ACC Data Management marker: HubLoadReturnedEmpty");
+        }
+
+        Log.Information("ACC Data Management marker: HubLoadCompleted Count={Count}", hubs.Count);
         return hubs;
     }
 

@@ -38,18 +38,34 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
     public bool IsLoading
     {
         get => isLoading;
-        private set { isLoading = value; On(); }
+        private set { isLoading = value; On(); On(nameof(ShowEmptyState)); }
     }
 
     public string? ErrorMessage
     {
         get => errorMessage;
-        private set { errorMessage = value; On(); On(nameof(HasError)); }
+        private set { errorMessage = value; On(); On(nameof(HasError)); On(nameof(ShowEmptyState)); }
     }
 
     public bool HasError => ErrorMessage != null;
 
     public bool CanGoBack => path.Count > 0;
+
+    public bool IsAtHubsLevel => path.Count == 0;
+
+    /// <summary>Shown while a level is loading — the Hubs level gets the specific wording required by the ACC browser spec.</summary>
+    public string LoadingText => IsAtHubsLevel ? "Loading Autodesk accounts..." : "Loading…";
+
+    /// <summary>
+    /// True once a load has actually been attempted (never true before the
+    /// first Start()/Reset() cycle completes) and finished successfully
+    /// with zero results and no error.
+    /// </summary>
+    public bool ShowEmptyState => started && !IsLoading && !HasError && Items.Count == 0;
+
+    public string EmptyStateText => IsAtHubsLevel
+        ? "No accessible Autodesk accounts were found."
+        : "No items found in this folder.";
 
     public string BreadcrumbText => "Hubs" + (path.Count == 0 ? "" : " > " + string.Join(" > ", path.Select(p => p.Name)));
 
@@ -80,16 +96,24 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
         CancelCommand = new RelayCommand(Cancel, () => IsLoading);
     }
 
-    /// <summary>Called once, when the authenticated user first reaches SignedIn — loads Hubs.</summary>
-    public void Start()
+    /// <summary>
+    /// Called once, whether the authenticated user was already SignedIn at
+    /// construction time or just transitioned to SignedIn — loads Hubs
+    /// exactly once. Fire-and-forget for WPF call sites; use
+    /// <see cref="StartAsync"/> to await completion (e.g. in tests).
+    /// </summary>
+    public void Start() => _ = StartAsync();
+
+    /// <summary>Idempotent: a second call while already started (or mid-load) is a no-op and issues no additional request.</summary>
+    public Task StartAsync()
     {
         if (started)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         started = true;
-        _ = LoadCurrentLevelAsync();
+        return LoadCurrentLevelAsync();
     }
 
     /// <summary>Called when the user signs out — resets to a clean, unloaded state.</summary>
@@ -102,8 +126,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
         Items.Clear();
         ErrorMessage = null;
         SelectedItem = null;
-        On(nameof(BreadcrumbText));
-        On(nameof(CanGoBack));
+        RaiseLevelChanged();
     }
 
     private Task OpenSelectedAsync()
@@ -126,8 +149,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
 
         path.Add(next);
         SelectedItem = null;
-        On(nameof(BreadcrumbText));
-        On(nameof(CanGoBack));
+        RaiseLevelChanged();
         return LoadCurrentLevelAsync();
     }
 
@@ -140,9 +162,17 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
 
         path.RemoveAt(path.Count - 1);
         SelectedItem = null;
+        RaiseLevelChanged();
+        return LoadCurrentLevelAsync();
+    }
+
+    private void RaiseLevelChanged()
+    {
         On(nameof(BreadcrumbText));
         On(nameof(CanGoBack));
-        return LoadCurrentLevelAsync();
+        On(nameof(IsAtHubsLevel));
+        On(nameof(LoadingText));
+        On(nameof(EmptyStateText));
     }
 
     private Task LoadCurrentLevelAsync()
@@ -211,6 +241,8 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
         {
             Items.Add(node);
         }
+
+        On(nameof(ShowEmptyState));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

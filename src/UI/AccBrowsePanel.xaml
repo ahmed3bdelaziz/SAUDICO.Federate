@@ -46,10 +46,13 @@
             </ListView.View>
         </ListView>
 
-        <!-- Status / loading / error -->
+        <!-- Status / loading / empty / error -->
         <StackPanel Grid.Row="3" Margin="0,6,0,0">
-            <TextBlock Text="Loading…" Foreground="#667085"
+            <TextBlock Text="{Binding LoadingText}" Foreground="#667085"
                        Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+
+            <TextBlock Text="{Binding EmptyStateText}" Foreground="#667085"
+                       Visibility="{Binding ShowEmptyState, Converter={StaticResource BoolToVis}}" />
 
             <StackPanel Orientation="Horizontal" Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="#8B1E1E" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0" />

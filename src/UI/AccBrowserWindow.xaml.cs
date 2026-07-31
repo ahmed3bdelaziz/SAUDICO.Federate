@@ -50,6 +50,15 @@ public partial class AccBrowserWindow : Window
         BrowseHost.Content = new AccBrowsePanel(browseViewModel);
         viewModel.PropertyChanged += OnAuthViewModelPropertyChanged;
 
+        // AuthViewModel may already be SignedIn at construction time — the
+        // underlying IApsAuthenticationService is a singleton composed once
+        // per Revit session, so if the user already signed in during an
+        // earlier "Add ACC Models" open, this new AuthViewModel starts life
+        // already SignedIn and no PropertyChanged event for IsSignedIn will
+        // ever fire. Without this explicit check, Hubs would never load and
+        // the browser would show a silently-empty list. See AccBrowseAutoStart.
+        AccBrowseAutoStart.EvaluateInitialState(viewModel.IsSignedIn, browseViewModel.Start);
+
         Closing += OnClosing;
         Loaded += (_, _) => LogLifecycleMarker("AccBrowserWindowLoaded");
         ContentRendered += (_, _) => LogLifecycleMarker("AccBrowserWindowContentRendered");
@@ -66,7 +75,10 @@ public partial class AccBrowserWindow : Window
     /// Starts loading Hubs the moment sign-in succeeds; resets the browser
     /// back to empty/unloaded if the user signs out (or a Data Management
     /// 401-retry exhausts and signs the user out) so stale data from a
-    /// previous session is never shown against a new one.
+    /// previous session is never shown against a new one. Only the
+    /// IsSignedIn property is acted on — every other AuthViewModel
+    /// notification (DisplayName, ErrorMessage, State, ...) is ignored; see
+    /// AccBrowseAutoStart.
     /// </summary>
     private void OnAuthViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -75,14 +87,7 @@ public partial class AccBrowserWindow : Window
             return;
         }
 
-        if (viewModel.IsSignedIn)
-        {
-            browseViewModel.Start();
-        }
-        else
-        {
-            browseViewModel.Reset();
-        }
+        AccBrowseAutoStart.HandlePropertyChanged(e.PropertyName, viewModel.IsSignedIn, browseViewModel.Start, browseViewModel.Reset);
     }
 
     /// <summary>
