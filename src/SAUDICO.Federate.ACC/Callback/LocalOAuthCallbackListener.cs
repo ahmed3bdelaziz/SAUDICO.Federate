@@ -12,7 +12,7 @@ namespace SAUDICO.Federate.ACC.Callback;
 /// Autodesk's desktop-app PKCE guidance.
 ///
 /// Windows URL ACL note: binding to a specific loopback hostname (e.g.
-/// "http://localhost:8080/api/auth/callback/") does NOT require a
+/// "http://localhost:8080/") does NOT require a
 /// "netsh http add urlacl" reservation or administrator elevation. That
 /// requirement only applies to strong wildcard bindings ("+" or "*"), which
 /// this listener never uses — it always binds the single, exact, configured

@@ -87,6 +87,25 @@ public sealed class LocalOAuthCallbackListenerTests
     }
 
     [Fact]
+    public async Task RootCallbackUri_IsAcceptedAndTrailingSlashPreserved()
+    {
+        Uri uri = new Uri("http://localhost:38767/");
+        Assert.EndsWith("/", uri.ToString(), StringComparison.Ordinal);
+
+        LocalOAuthCallbackListener listener = new LocalOAuthCallbackListener();
+        Task<OAuthCallbackResult> listenTask = listener.ListenAsync(uri, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        using HttpClient client = new HttpClient();
+        await client.GetAsync(new Uri(uri, "?code=root-code&state=root-state"));
+
+        OAuthCallbackResult result = await listenTask;
+
+        Assert.True(result.Success);
+        Assert.Equal("root-code", result.Code);
+        Assert.Equal("root-state", result.State);
+    }
+
+    [Fact]
     public async Task ListenerDisposesAndReleasesThePort()
     {
         Uri uri = CallbackUri(38766);

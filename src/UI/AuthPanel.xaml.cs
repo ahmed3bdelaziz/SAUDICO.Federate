@@ -1,5 +1,4 @@
 using System.Windows.Controls;
-using SAUDICO.Federate.ACC.Authentication;
 
 namespace SAUDICO.Federate.UI;
 
@@ -11,9 +10,29 @@ namespace SAUDICO.Federate.UI;
 /// </summary>
 public partial class AuthPanel : UserControl
 {
-    public AuthPanel(IApsAuthenticationService authenticationService)
+    public AuthPanel(AuthViewModel viewModel)
     {
+        LogMarker("AuthPanelConstructorEntered");
+
+        LogMarker("BeforeInitializeComponent");
         InitializeComponent();
-        DataContext = new AuthViewModel(authenticationService);
+        LogMarker("AfterInitializeComponent");
+
+        DataContext = viewModel;
+        LogMarker("DataContextAssigned");
+
+        LogMarker("AuthPanelConstructorCompleted");
+    }
+
+    private static void LogMarker(string marker)
+    {
+        try
+        {
+            Serilog.Log.Information("ACC browser lifecycle marker: {Marker}", marker);
+        }
+        catch
+        {
+            // Logging must never be the reason the panel fails to load.
+        }
     }
 }

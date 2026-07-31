@@ -74,12 +74,20 @@ public sealed class ApsAuthenticationService : IApsAuthenticationService, IDispo
         {
             configuration = configurationService.Load();
         }
-        catch (ApsConfigurationException)
+        catch (Exception ex)
         {
-            Log.Warning("APS configuration invalid: template could not be loaded or parsed");
+            // Deliberately broad: ANY configuration-load failure (malformed JSON, missing
+            // file, deserialization failure, or anything unforeseen) must leave this service
+            // in a safe, non-throwing ConfigurationInvalid state rather than escape the
+            // constructor. Never logs the raw JSON or Client ID — only the exception type,
+            // safe message, and (if available) the distinguishing load-failure reason.
+            string reason = (ex as ApsConfigurationException)?.Reason?.ToString() ?? ex.GetType().Name;
+            Log.Warning(ex, "APS configuration could not be loaded: {Reason} ({ExceptionType})", reason, ex.GetType().FullName);
             SetState(ApsAuthenticationState.ConfigurationInvalid, ConfigMessage);
             return;
         }
+
+        LogConfigurationDiagnostics(configuration);
 
         if (!configuration.Enabled)
         {
@@ -96,6 +104,30 @@ public sealed class ApsAuthenticationService : IApsAuthenticationService, IDispo
         }
 
         SetState(ApsAuthenticationState.SignedOut, null);
+    }
+
+    /// <summary>
+    /// Logs only the five safe fields required by policy — never the Client ID,
+    /// never the full authorization/token URL, never a query string.
+    /// </summary>
+    private void LogConfigurationDiagnostics(ApsConfiguration config)
+    {
+        ApsConfigurationDiagnostics diagnostics = configurationService.Diagnose(config);
+
+        string host = "unknown";
+        int port = 0;
+        string path = "unknown";
+
+        if (Uri.TryCreate(config.CallbackUri, UriKind.Absolute, out Uri? callbackUri))
+        {
+            host = callbackUri.Host;
+            port = callbackUri.Port;
+            path = callbackUri.AbsolutePath;
+        }
+
+        Log.Information(
+            "APS configuration enabled: {Enabled}; Client ID configured: {ClientIdConfigured}; Callback host: {CallbackHost}; Callback port: {CallbackPort}; Callback path: {CallbackPath}",
+            diagnostics.IsEnabled, diagnostics.IsClientIdConfigured, host, port, path);
     }
 
     private const string ConfigMessage = "APS is not configured. Add the SAUDICO Federate APS Client ID.";
@@ -232,11 +264,7 @@ public sealed class ApsAuthenticationService : IApsAuthenticationService, IDispo
 
     public async Task<string> GetValidAccessTokenAsync(CancellationToken cancellationToken)
     {
-        if (configuration == null || State == ApsAuthenticationState.Disabled ||
-            State == ApsAuthenticationState.ConfigurationInvalid)
-        {
-            throw new ApsAuthenticationException(ConfigMessage, ApsAuthenticationFailureReason.ConfigurationInvalid);
-        }
+        EnsureUsable();
 
         ApsToken? token;
         lock (gate)
@@ -249,15 +277,45 @@ public sealed class ApsAuthenticationService : IApsAuthenticationService, IDispo
             return token.AccessToken;
         }
 
+        return await RefreshAccessTokenCoreAsync(forceRefresh: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    public Task<string> RefreshAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        EnsureUsable();
+        return RefreshAccessTokenCoreAsync(forceRefresh: true, cancellationToken);
+    }
+
+    private void EnsureUsable()
+    {
+        if (configuration == null || State == ApsAuthenticationState.Disabled ||
+            State == ApsAuthenticationState.ConfigurationInvalid)
+        {
+            throw new ApsAuthenticationException(ConfigMessage, ApsAuthenticationFailureReason.ConfigurationInvalid);
+        }
+    }
+
+    /// <summary>
+    /// Shared refresh implementation. When <paramref name="forceRefresh"/> is
+    /// false (the <see cref="GetValidAccessTokenAsync"/> path), the
+    /// double-checked-locking re-validation inside the gate is preserved
+    /// exactly as before, so concurrent callers still produce exactly one
+    /// HTTP refresh call. When true (the forced-refresh path), that
+    /// re-validation is skipped and a real refresh-token grant call is
+    /// always attempted.
+    /// </summary>
+    private async Task<string> RefreshAccessTokenCoreAsync(bool forceRefresh, CancellationToken cancellationToken)
+    {
         await refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ApsToken? token;
             lock (gate)
             {
                 token = currentToken;
             }
 
-            if (token != null && !token.IsExpired(expirySafetyMargin))
+            if (!forceRefresh && token != null && !token.IsExpired(expirySafetyMargin))
             {
                 return token.AccessToken;
             }
@@ -283,7 +341,7 @@ public sealed class ApsAuthenticationService : IApsAuthenticationService, IDispo
             try
             {
                 refreshed = await authorizationClient
-                    .RefreshAsync(configuration, refreshToken, cancellationToken)
+                    .RefreshAsync(configuration!, refreshToken, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (ApsApiException ex) when (string.Equals(ex.ApsErrorCode, "invalid_grant", StringComparison.OrdinalIgnoreCase))

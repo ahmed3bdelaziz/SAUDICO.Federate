@@ -1,0 +1,60 @@
+<UserControl x:Class="SAUDICO.Federate.UI.AccBrowsePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:SAUDICO.Federate.UI">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:AccNodeKindToLabelConverter x:Key="KindLabel" />
+    </UserControl.Resources>
+    <Grid Margin="0,12,0,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar: Back, Refresh, search filter, Cancel -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+            <Button Content="Back" Command="{Binding BackCommand}" Padding="8,3" Margin="0,0,6,0" />
+            <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="8,3" Margin="0,0,6,0" />
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Padding="8,3" Margin="0,0,12,0"
+                    Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+            <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="200" VerticalContentAlignment="Center" />
+        </StackPanel>
+
+        <!-- Breadcrumb -->
+        <TextBlock Grid.Row="1" Text="{Binding BreadcrumbText}" Foreground="#667085" Margin="0,0,0,6" TextWrapping="Wrap" />
+
+        <!-- Item list: folders and RVT items (hubs/projects at shallower levels use the same columns) -->
+        <ListView Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
+                  MouseDoubleClick="OnItemDoubleClick">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Name" Width="320" DisplayMemberBinding="{Binding Name}" />
+                    <GridViewColumn Header="Type" Width="90" DisplayMemberBinding="{Binding Kind, Converter={StaticResource KindLabel}}" />
+                    <GridViewColumn Header="Last Modified" Width="160">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding LastModifiedUtc, StringFormat={}{0:yyyy-MM-dd HH:mm} UTC, TargetNullValue=''}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Version" Width="70" DisplayMemberBinding="{Binding VersionNumber, TargetNullValue=''}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <!-- Status / loading / error -->
+        <StackPanel Grid.Row="3" Margin="0,6,0,0">
+            <TextBlock Text="Loading…" Foreground="#667085"
+                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+
+            <StackPanel Orientation="Horizontal" Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#8B1E1E" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <Button Content="Retry" Command="{Binding RefreshCommand}" Padding="8,3" />
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

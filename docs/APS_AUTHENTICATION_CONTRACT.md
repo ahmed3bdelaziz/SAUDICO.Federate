@@ -1,9 +1,11 @@
 # APS Authentication Contract — Authorization Code Grant with PKCE
 
-> Verified against official Autodesk Platform Services (APS) documentation and the official
-> `autodesk-platform-services/aps-sdk-net` generated SDK source (Authentication module).
+> Verified against official Autodesk Platform Services (APS) documentation, the official
+> `autodesk-platform-services/aps-sdk-net` generated SDK source (Authentication module), and the
+> official Revit 2025 API Developers Guide / API reference for the Revit-hosting constraints.
 > Access date: 2026-07-29. This document is the source of truth for `SAUDICO.Federate.ACC`'s
-> authentication implementation — do not diverge from it without re-verifying against Autodesk.
+> authentication implementation and for how it may run inside the Revit 2025 host — do not diverge
+> from it without re-verifying against Autodesk.
 
 ## API status
 
@@ -103,9 +105,13 @@ authentication and require interactive sign-in again.
 The `redirect_uri` sent in both the authorize request and the token exchange must **byte-exact
 match** one of the callback URIs registered on the APS application, including scheme, host, port,
 path, and trailing slash. A mismatch (including a missing/extra trailing slash) is rejected by
-Autodesk. SAUDICO Federate uses a single fixed loopback URI
-(`http://localhost:8080/api/auth/callback/`, trailing slash included) and never varies it at
-runtime.
+Autodesk. SAUDICO Federate uses a single fixed loopback URI, `http://localhost:8080/` (root path,
+trailing slash included), and never varies it at runtime — used identically by
+`config/apssettings.json`, the merged effective configuration, the authorize `redirect_uri`, the
+token-exchange `redirect_uri`, and `LocalOAuthCallbackListener`'s bound prefix (verified end-to-end
+2026-07-29; this superseded an earlier draft value of
+`http://localhost:8080/api/auth/callback/` that was never actually registered or shipped — corrected
+here to match the real registered/configured value).
 
 ## Verified minimum scopes used by SAUDICO Federate
 
@@ -124,7 +130,47 @@ No write, create, delete, or admin scope (`data:write`, `data:create`, `bucket:*
 not be hardcoded). The app treats a token as invalid once within a safety margin of its computed
 `ExpiresAtUtc` and proactively refreshes rather than waiting for a 401.
 
+## Revit 2025 hosting contract (verified against official Autodesk Revit API documentation)
+
+These are the Revit-side (not APS-side) rules that constrain how and where the authentication code
+above may run inside SAUDICO Federate's Revit 2025 host. Verified 2026-07-29 against the official
+Revit 2025 API Developers Guide on `help.autodesk.com` (URL structure and page titles confirmed via
+search; like the APS site, this portal renders content client-side and could not be fetched
+directly by automated tooling in this session — the same limitation already noted below for the APS
+documentation) and the official generated API reference on `revitapidocs.com`.
+
+- **Revit 2025 add-ins are .NET 8-only.** The Revit 2025 API Developers Guide's "Migrating From
+  .NET 4.8 to .NET 8" page states the Revit 2025 API is based on .NET Core 8 and add-ins must be
+  recompiled for .NET 8 — there is no .NET Framework compatibility shim. `SAUDICO.Federate.Revit2025`
+  and every project it loads (`Shared`, `Core`, `Export`, `UI`, `SAUDICO.Federate.ACC`,
+  `SAUDICO.Federate.Logging`) target `net8.0-windows` for this build, driven by the shared
+  `RevitYear`-conditional `TargetFramework` in `Directory.Build.props`; `Revit2024`/net48 remains a
+  separate, non-loaded target for the 2024 host only.
+- **`UIApplication.MainWindowHandle` is the correct WPF/modal owner handle.** Per the Revit API
+  reference, this property was added specifically to replace
+  `System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle`, which became unreliable once
+  Revit's docking system changed (Revit 2019 onward) — `MainWindowHandle` is the property Autodesk
+  documents as safe for parenting add-in dialogs. `FederationCommand.Execute` captures
+  `commandData.Application.MainWindowHandle` once and passes it into `Manager`, which uses the same
+  `IntPtr` (via `WindowInteropHelper(window).Owner = ...`) to own every ACC browser window
+  (`DiagnosticShellWindow`, both `AccBrowserWindow` constructors) — never `Process.MainWindowHandle`.
+- **`ExternalEvent`/`IExternalEventHandler` exists to marshal calls *into* the Revit API from
+  modeless/external code — it is not a general-purpose async mechanism.** Per the Revit API
+  Developers Guide's "External Events" page, the pattern is: implement `IExternalEventHandler`,
+  register it via `ExternalEvent.Create(...)`, and call `Raise()` only when the modeless UI needs to
+  perform an actual Revit API operation, which Revit then executes on the next Idling cycle inside a
+  valid API context. Authentication, PKCE, the local OAuth callback listener, HTTP calls to APS, and
+  user-profile retrieval touch **no** Revit API surface at all, so none of them use `ExternalEvent` —
+  it remains reserved exclusively for the existing NWC export job queue (`RequestHandler`/
+  `RevitWorkItem` in `Host.cs`). No Revit API call is made from a background thread or from inside
+  any ACC/authentication callback.
+
 ## Documentation sources consulted (access date 2026-07-29)
+
+- https://help.autodesk.com/view/RVT/2025/ENU/?guid=Revit_API_Revit_API_Developers_Guide_Introduction_Getting_Started_Using_the_Autodesk_Revit_API_NET8_Update_html ("Migrating From .NET 4.8 to .NET 8")
+- https://help.autodesk.com/view/RVT/2025/ENU/?guid=Revit_API_Revit_API_Developers_Guide_Advanced_Topics_External_Events_html ("External Events")
+- https://www.revitapidocs.com/2025/51ca80e2-3e5f-7dd2-9d95-f210950c72ae.htm (`UIApplication` class reference, incl. `MainWindowHandle`)
+- https://thebuildingcoder.typepad.com/blog/2018/11/revit-window-handle-and-parenting-an-add-in-form.html (background on why `MainWindowHandle` replaced `Process.MainWindowHandle`)
 
 - https://aps.autodesk.com/en/docs/oauth/v2/tutorials/get-3-legged-token-pkce
 - https://aps.autodesk.com/en/docs/oauth/v2/tutorials/get-3-legged-token-pkce/get-3-legged-token-pkce-private

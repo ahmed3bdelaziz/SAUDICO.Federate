@@ -23,7 +23,7 @@
 
             <StackPanel Visibility="{Binding IsSignedIn, Converter={StaticResource BoolToVis}}" Orientation="Horizontal">
                 <TextBlock Foreground="#172033" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <Run Text="Signed in as " /><Run Text="{Binding DisplayName}" FontWeight="Bold" />
+                    <Run Text="Signed in as " /><Run Text="{Binding DisplayName, Mode=OneWay}" FontWeight="Bold" />
                 </TextBlock>
                 <Button Content="Sign out" Command="{Binding SignOutCommand}" Padding="10,4" />
             </StackPanel>

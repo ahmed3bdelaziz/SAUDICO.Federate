@@ -26,13 +26,30 @@ internal sealed class FakeConfigurationService : IApsConfigurationService
     };
 
     public bool ForceInvalid { get; set; }
+    public Exception? ThrowOnLoad { get; set; }
 
-    public ApsConfiguration Load() => Configuration;
+    public ApsConfiguration Load()
+    {
+        if (ThrowOnLoad != null)
+        {
+            throw ThrowOnLoad;
+        }
+
+        return Configuration;
+    }
 
     public ApsConfigurationValidationResult Validate(ApsConfiguration configuration) =>
         ForceInvalid
             ? ApsConfigurationValidationResult.Failure(new[] { "forced invalid" })
             : ApsConfigurationValidationResult.Success();
+
+    public ApsConfigurationDiagnostics Diagnose(ApsConfiguration configuration) => new ApsConfigurationDiagnostics
+    {
+        IsEnabled = configuration.Enabled,
+        IsClientIdConfigured = !string.IsNullOrWhiteSpace(configuration.ClientId),
+        IsCallbackValid = true,
+        ValidationMessages = ForceInvalid ? new[] { "forced invalid" } : System.Array.Empty<string>()
+    };
 }
 
 internal sealed class FakePkceService : IPkceService

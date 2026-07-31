@@ -76,4 +76,71 @@ public sealed class LoggingSafetyTests
             Assert.DoesNotContain("fixed-verifier", message, StringComparison.Ordinal);
         }
     }
+
+    [Fact]
+    public void ConfigurationDiagnosticsLogging_NeverLogsClientIdValue()
+    {
+        const string SecretClientId = "SECRET-CLIENT-ID-MARKER-abc123xyz";
+
+        CapturingSink sink = new CapturingSink();
+        ILogger previous = Log.Logger;
+        Log.Logger = new LoggerConfiguration().WriteTo.Sink(sink).MinimumLevel.Verbose().CreateLogger();
+
+        try
+        {
+            FakeConfigurationService config = new FakeConfigurationService();
+            config.Configuration.ClientId = SecretClientId;
+
+            ApsAuthenticationService service = new ApsAuthenticationService(
+                config,
+                new FakePkceService(),
+                new SAUDICO.Federate.ACC.OAuthState.InMemoryOAuthStateStore(),
+                new FakeCallbackListener(),
+                new FakeAuthorizationClient(),
+                new FakeUserProfileService(),
+                new FakeTokenStore(),
+                new FakeBrowserLauncher());
+
+            Assert.NotNull(service);
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+            Log.Logger = previous;
+        }
+
+        foreach (string message in sink.Messages)
+        {
+            Assert.DoesNotContain(SecretClientId, message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void AccBrowserLauncherFailure_NeverLogsSensitiveMarkerBeyondExceptionText()
+    {
+        CapturingSink sink = new CapturingSink();
+        ILogger previous = Log.Logger;
+        Log.Logger = new LoggerConfiguration().WriteTo.Sink(sink).MinimumLevel.Verbose().CreateLogger();
+
+        try
+        {
+            SAUDICO.Federate.UI.AccBrowserLauncher.TryLaunch(
+                composeAuthentication: () => throw new InvalidOperationException("simulated composition failure"),
+                createAndShowWindow: _ => { },
+                showSafeMessage: _ => { });
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+            Log.Logger = previous;
+        }
+
+        foreach (string message in sink.Messages)
+        {
+            Assert.DoesNotContain("clientId", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("access_token", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("refresh_token", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("code_verifier", message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

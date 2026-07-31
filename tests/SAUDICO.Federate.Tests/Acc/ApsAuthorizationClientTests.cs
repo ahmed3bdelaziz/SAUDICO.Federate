@@ -20,7 +20,7 @@ public sealed class ApsAuthorizationClientTests
         SchemaVersion = 1,
         Enabled = true,
         ClientId = "test-client",
-        CallbackUri = "http://localhost:39999/callback/",
+        CallbackUri = "http://localhost:8080/",
         AuthorizationEndpoint = "https://developer.api.autodesk.com/authentication/v2/authorize",
         TokenEndpoint = "https://developer.api.autodesk.com/authentication/v2/token",
         UserProfileEndpoint = "https://api.userprofile.autodesk.com/userinfo",
@@ -72,5 +72,43 @@ public sealed class ApsAuthorizationClientTests
         Assert.Contains("code_challenge_method=S256", query);
         Assert.Contains("state=state-value", query);
         Assert.DoesNotContain("client_secret", query);
+    }
+
+    [Fact]
+    public void AuthorizationUri_UsesExactRootCallback_NoPathAppended()
+    {
+        ApsAuthorizationClient client = new ApsAuthorizationClient(new ApsHttpTransport());
+        PkcePair pkce = new PkcePair { CodeVerifier = "v", CodeChallenge = "challenge-value", CodeChallengeMethod = "S256" };
+
+        Uri uri = client.BuildAuthorizationUri(Config(), pkce, "state-value");
+        string decodedQuery = Uri.UnescapeDataString(uri.Query);
+
+        Assert.Contains("redirect_uri=http://localhost:8080/", decodedQuery);
+        Assert.DoesNotContain("redirect_uri=http://localhost:8080/api", decodedQuery);
+        Assert.DoesNotContain("redirect_uri=http://localhost:8080/callback", decodedQuery);
+    }
+
+    [Fact]
+    public async Task TokenExchange_UsesExactRootCallback_NoPathAppended()
+    {
+        string? capturedBody = null;
+        FakeHttpMessageHandler handler = new FakeHttpMessageHandler(request =>
+        {
+            capturedBody = request.Content!.ReadAsStringAsync().Result;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"access_token\":\"tok\",\"token_type\":\"Bearer\",\"expires_in\":3600,\"refresh_token\":\"ref\"}",
+                    Encoding.UTF8, "application/json")
+            };
+        });
+
+        ApsAuthorizationClient client = new ApsAuthorizationClient(new ApsHttpTransport(new HttpClient(handler)));
+        await client.ExchangeAuthorizationCodeAsync(Config(), "code", "verifier", CancellationToken.None);
+
+        string decodedBody = Uri.UnescapeDataString(capturedBody!);
+        Assert.Contains("redirect_uri=http://localhost:8080/", decodedBody);
+        Assert.DoesNotContain("redirect_uri=http://localhost:8080/api", decodedBody);
+        Assert.DoesNotContain("redirect_uri=http://localhost:8080/callback", decodedBody);
     }
 }

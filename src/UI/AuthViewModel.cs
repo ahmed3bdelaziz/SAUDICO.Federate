@@ -24,9 +24,12 @@ public sealed class AuthViewModel : INotifyPropertyChanged, IDisposable
 
     public AuthViewModel(IApsAuthenticationService authenticationService)
     {
+        LogMarker("AuthViewModelConstructorEntered");
+
         this.authenticationService = authenticationService;
         dispatcher = Dispatcher.CurrentDispatcher;
         authenticationService.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        LogMarker("AuthenticationStateEventSubscribed");
 
         state = authenticationService.State;
         displayName = authenticationService.CurrentUser?.DisplayName ?? "";
@@ -35,6 +38,20 @@ public sealed class AuthViewModel : INotifyPropertyChanged, IDisposable
         SignOutCommand = new RelayCommand(SignOutAsync, () => State == ApsAuthenticationState.SignedIn);
         CancelCommand = new RelayCommand(Cancel, () => State == ApsAuthenticationState.SigningIn);
         RetryCommand = new RelayCommand(SignInAsync, () => State == ApsAuthenticationState.Failed);
+
+        LogMarker("AuthViewModelConstructorCompleted");
+    }
+
+    private static void LogMarker(string marker)
+    {
+        try
+        {
+            Serilog.Log.Information("ACC browser lifecycle marker: {Marker}", marker);
+        }
+        catch
+        {
+            // Logging must never be the reason authentication setup fails.
+        }
     }
 
     public ApsAuthenticationState State
@@ -147,6 +164,7 @@ public sealed class AuthViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         authenticationService.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        signInCts?.Cancel();
         signInCts?.Dispose();
     }
 }

@@ -12,4 +12,7 @@ public interface IApsConfigurationService
     ApsConfiguration Load();
 
     ApsConfigurationValidationResult Validate(ApsConfiguration configuration);
+
+    /// <summary>Safe-to-log/display summary — never includes the Client ID or full URLs.</summary>
+    ApsConfigurationDiagnostics Diagnose(ApsConfiguration configuration);
 }

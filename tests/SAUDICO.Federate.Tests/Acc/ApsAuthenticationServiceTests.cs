@@ -185,4 +185,49 @@ public sealed class ApsAuthenticationServiceTests
         Assert.Null(service.CurrentUser);
         Assert.True(tokenStore.Deleted);
     }
+
+    [Fact]
+    public void MalformedConfigurationLoad_DoesNotThrowFromConstructor_EndsInConfigurationInvalid()
+    {
+        // Simulates a raw, non-ApsConfigurationException failure (e.g. malformed JSON
+        // bubbling up as System.Text.Json.JsonException) escaping the configuration
+        // loader. Construction must still complete safely.
+        FakeConfigurationService config = new FakeConfigurationService
+        {
+            ThrowOnLoad = new System.Text.Json.JsonException("simulated malformed JSON")
+        };
+
+        Exception? caught = Record.Exception(() => new ApsAuthenticationService(
+            config,
+            new FakePkceService(),
+            new SAUDICO.Federate.ACC.OAuthState.InMemoryOAuthStateStore(),
+            new FakeCallbackListener(),
+            new FakeAuthorizationClient(),
+            new FakeUserProfileService(),
+            new FakeTokenStore(),
+            new FakeBrowserLauncher()));
+
+        Assert.Null(caught);
+    }
+
+    [Fact]
+    public void MalformedConfigurationLoad_ResultsInConfigurationInvalidState()
+    {
+        FakeConfigurationService config = new FakeConfigurationService
+        {
+            ThrowOnLoad = new InvalidOperationException("simulated unexpected failure")
+        };
+
+        ApsAuthenticationService service = new ApsAuthenticationService(
+            config,
+            new FakePkceService(),
+            new SAUDICO.Federate.ACC.OAuthState.InMemoryOAuthStateStore(),
+            new FakeCallbackListener(),
+            new FakeAuthorizationClient(),
+            new FakeUserProfileService(),
+            new FakeTokenStore(),
+            new FakeBrowserLauncher());
+
+        Assert.Equal(ApsAuthenticationState.ConfigurationInvalid, service.State);
+    }
 }
