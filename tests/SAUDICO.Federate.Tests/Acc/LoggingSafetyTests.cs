@@ -187,4 +187,41 @@ public sealed class LoggingSafetyTests
             Assert.DoesNotContain("Bearer", message, StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    [Fact]
+    public async Task AccDataManagementClient_EntireProjectSearchWithPartial403_NeverLogsAccessTokenValue()
+    {
+        const string SecretAccessToken = "SECRET-DM-SEARCH-TOKEN-MARKER-ee55ff66";
+
+        CapturingSink sink = new CapturingSink();
+        ILogger previous = Log.Logger;
+        Log.Logger = new LoggerConfiguration().WriteTo.Sink(sink).MinimumLevel.Verbose().CreateLogger();
+
+        try
+        {
+            FakeDataManagementTransport transport = new FakeDataManagementTransport();
+            transport.Responses.Enqueue(() => JsonDocument.Parse(
+                """{"links":{"self":{"href":"x"}},"data":[{"type":"folders","id":"top-1","attributes":{"name":"Folder One"}},{"type":"folders","id":"top-2","attributes":{"name":"Folder Two"}}]}"""));
+            transport.Responses.Enqueue(() => throw new ApsApiException("forbidden", 403, "forbidden"));
+            transport.Responses.Enqueue(() => JsonDocument.Parse(
+                """{"links":{"self":{"href":"x"}},"data":[{"type":"versions","id":"ver-1","attributes":{"versionNumber":1},"relationships":{"item":{"data":{"type":"items","id":"item-1"}}}}],"included":[{"type":"items","id":"item-1","attributes":{"displayName":"Model.rvt","pathInProject":"/x"}}]}"""));
+
+            FakeAuthenticationServiceForDataManagement auth = new FakeAuthenticationServiceForDataManagement { AccessToken = SecretAccessToken };
+            AccDataManagementClient client = new AccDataManagementClient(transport, auth);
+
+            await client.SearchProjectAsync("hub-1", "proj-1", CancellationToken.None);
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+            Log.Logger = previous;
+        }
+
+        foreach (string message in sink.Messages)
+        {
+            Assert.DoesNotContain(SecretAccessToken, message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Authorization", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Bearer", message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

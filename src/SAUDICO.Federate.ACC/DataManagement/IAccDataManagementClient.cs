@@ -23,4 +23,21 @@ public interface IAccDataManagementClient
     /// omitted) from the given folder.
     /// </summary>
     Task<IReadOnlyList<AccBrowseNode>> GetFolderContentsAsync(string projectId, string folderId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Recursively searches the given folder and all of its subfolders
+    /// using the official Data Management folder-search endpoint (returns
+    /// tip/latest versions only), following pagination. Only RVT-named
+    /// items are returned.
+    /// </summary>
+    Task<AccSearchOutcome> SearchFolderRecursiveAsync(string projectId, string folderId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Searches every top folder of the given project (bounded concurrency)
+    /// and merges the results, deduplicated by item identity. If one top
+    /// folder fails (e.g. 403), the others' results are still returned and
+    /// <see cref="AccSearchOutcome.HasPartialFailure"/> is set — cancellation
+    /// still aborts the whole operation.
+    /// </summary>
+    Task<AccSearchOutcome> SearchProjectAsync(string hubId, string projectId, CancellationToken cancellationToken);
 }

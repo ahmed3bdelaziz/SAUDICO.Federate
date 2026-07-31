@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -22,7 +23,7 @@ public partial class AccBrowserWindow : Window
     private readonly AuthViewModel? viewModel;
     private readonly AccBrowseViewModel? browseViewModel;
 
-    public AccBrowserWindow(IApsAuthenticationService authenticationService)
+    public AccBrowserWindow(IApsAuthenticationService authenticationService, Action<IReadOnlyList<AccBrowseNode>>? onAddToQueue = null)
     {
         LogLifecycleMarker("AccBrowserWindowConstructorEntered");
 
@@ -44,9 +45,11 @@ public partial class AccBrowserWindow : Window
         // it only wraps the existing HTTP transport and authentication
         // abstraction. Hubs are not fetched until AuthViewModel reaches
         // SignedIn (see OnAuthStateChanged below), i.e. only after the user
-        // has actually signed in.
+        // has actually signed in. "Add Selected Models" hands the selected
+        // rows to the caller (the Federation Manager queue) — this window
+        // and its ViewModel never open, download, or write anything.
         IAccDataManagementClient dataClient = new AccDataManagementClient(new ApsHttpTransport(), authenticationService);
-        browseViewModel = new AccBrowseViewModel(dataClient);
+        browseViewModel = new AccBrowseViewModel(dataClient, onAddToQueue);
         BrowseHost.Content = new AccBrowsePanel(browseViewModel);
         viewModel.PropertyChanged += OnAuthViewModelPropertyChanged;
 

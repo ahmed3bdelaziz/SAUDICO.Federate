@@ -161,6 +161,58 @@ public sealed class AccDataManagementClientTests
     }
 
     [Fact]
+    public async Task GetFolderContentsAsync_ExtractsCloudModelGuidsFromTipVersionExtensionData()
+    {
+        (AccDataManagementClient client, FakeDataManagementTransport transport, _) = CreateClient();
+        transport.Responses.Enqueue(() => Doc("""
+        {
+          "links": { "self": { "href": "x" } },
+          "data": [
+            { "type": "items", "id": "item-1", "attributes": { "displayName": "Model.rvt" },
+              "relationships": { "tip": { "data": { "type": "versions", "id": "ver-1" } } } }
+          ],
+          "included": [
+            { "type": "versions", "id": "ver-1", "attributes": {
+                "versionNumber": 3,
+                "extension": { "type": "versions:autodesk.bim360:C4RModel", "data": { "projectGuid": "11111111-1111-1111-1111-111111111111", "modelGuid": "22222222-2222-2222-2222-222222222222" } }
+              } }
+          ]
+        }
+        """));
+
+        IReadOnlyList<AccBrowseNode> entries = await client.GetFolderContentsAsync("proj-1", "folder-1", CancellationToken.None);
+
+        AccBrowseNode rvt = Assert.Single(entries);
+        Assert.Equal("versions:autodesk.bim360:C4RModel", rvt.ExtensionType);
+        Assert.Equal("11111111-1111-1111-1111-111111111111", rvt.CloudProjectGuid);
+        Assert.Equal("22222222-2222-2222-2222-222222222222", rvt.CloudModelGuid);
+    }
+
+    [Fact]
+    public async Task GetFolderContentsAsync_PlainFileHasNoCloudGuids()
+    {
+        (AccDataManagementClient client, FakeDataManagementTransport transport, _) = CreateClient();
+        transport.Responses.Enqueue(() => Doc("""
+        {
+          "links": { "self": { "href": "x" } },
+          "data": [
+            { "type": "items", "id": "item-1", "attributes": { "displayName": "Plain.rvt" },
+              "relationships": { "tip": { "data": { "type": "versions", "id": "ver-1" } } } }
+          ],
+          "included": [
+            { "type": "versions", "id": "ver-1", "attributes": { "versionNumber": 1, "extension": { "type": "items:autodesk.bim360:File" } } }
+          ]
+        }
+        """));
+
+        IReadOnlyList<AccBrowseNode> entries = await client.GetFolderContentsAsync("proj-1", "folder-1", CancellationToken.None);
+
+        AccBrowseNode rvt = Assert.Single(entries);
+        Assert.Null(rvt.CloudProjectGuid);
+        Assert.Null(rvt.CloudModelGuid);
+    }
+
+    [Fact]
     public async Task GetFolderContentsAsync_ExcludesNonRvtItems()
     {
         (AccDataManagementClient client, FakeDataManagementTransport transport, _) = CreateClient();

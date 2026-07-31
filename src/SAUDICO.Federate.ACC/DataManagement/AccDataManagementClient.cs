@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,8 @@ namespace SAUDICO.Federate.ACC.DataManagement;
 public sealed class AccDataManagementClient : IAccDataManagementClient
 {
     private const string BaseUrl = "https://developer.api.autodesk.com";
+    private const string AllowedPaginationHost = "developer.api.autodesk.com";
+    private const int MaxConcurrentTopFolderSearches = 3;
 
     private readonly IApsHttpTransport transport;
     private readonly IApsAuthenticationService authenticationService;
@@ -99,17 +102,263 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
         return entries;
     }
 
+    /// <summary>
+    /// Recursively searches the given folder and its subfolders via the
+    /// official <c>GET /data/v1/projects/{project_id}/folders/{folder_id}/search</c>
+    /// endpoint, which inherently returns only tip (latest) versions — no
+    /// extra filter parameter is needed for that. RVT-name filtering is
+    /// applied client-side, identically to <see cref="GetFolderContentsAsync"/>.
+    /// </summary>
+    public async Task<AccSearchOutcome> SearchFolderRecursiveAsync(string projectId, string folderId, CancellationToken cancellationToken)
+    {
+        List<AccBrowseNode> results = await CollectPagesAsync(
+            $"{BaseUrl}/data/v1/projects/{Uri.EscapeDataString(projectId)}/folders/{Uri.EscapeDataString(folderId)}/search",
+            ParseSearchResults,
+            cancellationToken).ConfigureAwait(false);
+
+        Log.Information("ACC Data Management: recursive search returned {Count} RVT item(s)", results.Count);
+        return new AccSearchOutcome { Results = results };
+    }
+
+    public async Task<AccSearchOutcome> SearchProjectAsync(string hubId, string projectId, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<AccBrowseNode> topFolders = await GetTopFoldersAsync(hubId, projectId, cancellationToken).ConfigureAwait(false);
+
+        using SemaphoreSlim gate = new SemaphoreSlim(MaxConcurrentTopFolderSearches);
+        Task<(List<AccBrowseNode> Results, bool Failed)>[] tasks = topFolders
+            .Select(folder => SearchOneTopFolderAsync(projectId, folder.Id, gate, cancellationToken))
+            .ToArray();
+
+        (List<AccBrowseNode> Results, bool Failed)[] outcomes = await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        Dictionary<string, AccBrowseNode> merged = new(StringComparer.Ordinal);
+        int failedCount = 0;
+        foreach ((List<AccBrowseNode> Results, bool Failed) outcome in outcomes)
+        {
+            if (outcome.Failed)
+            {
+                failedCount++;
+                continue;
+            }
+
+            foreach (AccBrowseNode node in outcome.Results)
+            {
+                // Deduplicate by stable item identity, never by display name.
+                merged.TryAdd(node.ItemId ?? node.Id, node);
+            }
+        }
+
+        if (failedCount > 0)
+        {
+            Log.Warning(
+                "ACC Data Management: entire-project search had partial results — {FailedCount} of {TotalCount} top folder(s) could not be searched",
+                failedCount, topFolders.Count);
+        }
+
+        Log.Information("ACC Data Management: entire-project search returned {Count} RVT item(s)", merged.Count);
+
+        return new AccSearchOutcome
+        {
+            Results = merged.Values.ToList(),
+            HasPartialFailure = failedCount > 0,
+            FailedFolderCount = failedCount,
+        };
+    }
+
+    private async Task<(List<AccBrowseNode> Results, bool Failed)> SearchOneTopFolderAsync(
+        string projectId, string folderId, SemaphoreSlim gate, CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            AccSearchOutcome outcome = await SearchFolderRecursiveAsync(projectId, folderId, cancellationToken).ConfigureAwait(false);
+            return (new List<AccBrowseNode>(outcome.Results), false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation aborts the whole entire-project search — never treated as a per-folder failure to route around.
+            throw;
+        }
+        catch (AccDataManagementException ex)
+        {
+            ApsApiException? apiEx = ex.InnerException as ApsApiException;
+            Log.Warning(
+                "ACC Data Management: top folder search failed, continuing with remaining folders. StatusCode={StatusCode} ErrorCode={ErrorCode}",
+                apiEx?.StatusCode, apiEx?.ApsErrorCode ?? ex.InnerException?.GetType().Name);
+            return (new List<AccBrowseNode>(), true);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The search endpoint's <c>data[]</c> are version resources; the items
+    /// they belong to are in <c>included[]</c> (SDK-verified: <c>Search.Data</c>
+    /// is <c>List&lt;VersionData&gt;</c>, <c>Search.Included</c> is
+    /// <c>List&lt;ItemData&gt;</c>) — the reverse cross-reference direction
+    /// from <see cref="ParseFolderContents"/>. A version's
+    /// <c>relationships.item.data.id</c> resolves the owning item, whose
+    /// <c>attributes.pathInProject</c> is the API-supplied relative folder
+    /// path (never constructed/guessed locally) and whose
+    /// <c>relationships.parent.data.id</c> is the containing folder id.
+    /// </summary>
+    private static IEnumerable<AccBrowseNode> ParseSearchResults(JsonElement root)
+    {
+        Dictionary<string, JsonElement> itemsById = ExtractIncludedByType(root, "items");
+
+        if (!root.TryGetProperty("data", out JsonElement data) || data.ValueKind != JsonValueKind.Array)
+        {
+            yield break;
+        }
+
+        foreach (JsonElement version in data.EnumerateArray())
+        {
+            if (GetString(version, "type") != "versions")
+            {
+                continue;
+            }
+
+            string versionId = GetString(version, "id") ?? "";
+            string? itemId = GetRelationshipId(version, "item");
+            if (itemId == null || !itemsById.TryGetValue(itemId, out JsonElement item))
+            {
+                // Cannot resolve the owning item from this response — skip rather than guess.
+                continue;
+            }
+
+            string displayName = GetAttributeString(item, "displayName") ?? GetAttributeString(version, "displayName") ?? "";
+            if (!displayName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            yield return new AccBrowseNode
+            {
+                Id = itemId,
+                ItemId = itemId,
+                VersionId = versionId,
+                Name = displayName,
+                Kind = AccNodeKind.RvtFile,
+                LastModifiedUtc = GetAttributeDateTime(version, "lastModifiedTime") ?? GetAttributeDateTime(item, "lastModifiedTime"),
+                VersionNumber = GetAttributeInt(version, "versionNumber"),
+                FolderId = GetRelationshipId(item, "parent"),
+                FolderPath = GetAttributeString(item, "pathInProject"),
+                // The Revit-Cloud-Model marker and its projectGuid/modelGuid live on
+                // the VERSION's extension, not the item's — verified against the
+                // official APS "Accessing BIM 360 Design models on Revit" guidance
+                // (attributes.extension.type == "versions:autodesk.bim360:C4RModel",
+                // attributes.extension.data.{projectGuid,modelGuid}). The item's own
+                // extension type is kept only as a display fallback when the version
+                // doesn't carry one.
+                ExtensionType = GetAttributeExtensionType(version) ?? GetAttributeExtensionType(item),
+                CloudProjectGuid = GetAttributeExtensionDataString(version, "projectGuid"),
+                CloudModelGuid = GetAttributeExtensionDataString(version, "modelGuid"),
+            };
+        }
+    }
+
+    private static Dictionary<string, JsonElement> ExtractIncludedByType(JsonElement root, string type)
+    {
+        Dictionary<string, JsonElement> map = new(StringComparer.Ordinal);
+
+        if (!root.TryGetProperty("included", out JsonElement included) || included.ValueKind != JsonValueKind.Array)
+        {
+            return map;
+        }
+
+        foreach (JsonElement resource in included.EnumerateArray())
+        {
+            if (GetString(resource, "type") == type && GetString(resource, "id") is string id)
+            {
+                map[id] = resource;
+            }
+        }
+
+        return map;
+    }
+
+    private static string? GetAttributeExtensionType(JsonElement entry)
+    {
+        if (entry.TryGetProperty("attributes", out JsonElement attrs) &&
+            attrs.TryGetProperty("extension", out JsonElement ext) &&
+            ext.TryGetProperty("type", out JsonElement typeEl) &&
+            typeEl.ValueKind == JsonValueKind.String)
+        {
+            return typeEl.GetString();
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reads a string field from <c>attributes.extension.data</c> — the
+    /// loosely-typed (per-item-type) extension payload the official SDK
+    /// itself models as a generic dictionary, not a fixed schema. Never
+    /// invents a value: returns null whenever the field is absent or not a
+    /// string, exactly as returned.
+    /// </summary>
+    private static string? GetAttributeExtensionDataString(JsonElement entry, string fieldName)
+    {
+        if (entry.TryGetProperty("attributes", out JsonElement attrs) &&
+            attrs.TryGetProperty("extension", out JsonElement ext) &&
+            ext.TryGetProperty("data", out JsonElement data) &&
+            data.TryGetProperty(fieldName, out JsonElement fieldEl) &&
+            fieldEl.ValueKind == JsonValueKind.String)
+        {
+            return fieldEl.GetString();
+        }
+
+        return null;
+    }
+
+    private static int? GetAttributeInt(JsonElement entry, string propertyName)
+    {
+        if (entry.TryGetProperty("attributes", out JsonElement attrs) &&
+            attrs.TryGetProperty(propertyName, out JsonElement value) &&
+            value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int result))
+        {
+            return result;
+        }
+
+        return null;
+    }
+
+    private static string? GetRelationshipId(JsonElement entry, string relationshipName)
+    {
+        if (entry.TryGetProperty("relationships", out JsonElement relationships) &&
+            relationships.TryGetProperty(relationshipName, out JsonElement relationship) &&
+            relationship.TryGetProperty("data", out JsonElement relationshipData) &&
+            relationshipData.TryGetProperty("id", out JsonElement idEl) &&
+            idEl.ValueKind == JsonValueKind.String)
+        {
+            return idEl.GetString();
+        }
+
+        return null;
+    }
+
     private async Task<List<AccBrowseNode>> CollectPagesAsync(
         string firstUrl,
         Func<JsonElement, IEnumerable<AccBrowseNode>> parsePage,
         CancellationToken cancellationToken)
     {
         List<AccBrowseNode> results = new();
+        HashSet<string> visitedUrls = new(StringComparer.Ordinal);
         string? url = firstUrl;
 
         while (url != null)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (!visitedUrls.Add(url))
+            {
+                // A "next" link that repeats a URL we already fetched — stop
+                // rather than loop forever; keep whatever was already collected.
+                Log.Warning("ACC Data Management: stopped pagination — repeated next link detected");
+                break;
+            }
 
             using JsonDocument page = await GetWithUnauthorizedRetryAsync(url, cancellationToken).ConfigureAwait(false);
             results.AddRange(parsePage(page.RootElement));
@@ -142,6 +391,8 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
                 Name = name,
                 Kind = kind,
                 LastModifiedUtc = GetAttributeDateTime(entry, "lastModifiedTime"),
+                // Only hubs carry a region attribute; harmless no-op (null) for projects/folders.
+                Region = GetAttributeString(entry, "region"),
             };
         }
     }
@@ -156,7 +407,7 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
     /// </summary>
     private static IEnumerable<AccBrowseNode> ParseFolderContents(JsonElement root)
     {
-        Dictionary<string, (int? VersionNumber, DateTime? LastModifiedUtc)> versionsById = ExtractIncludedVersions(root);
+        Dictionary<string, AccVersionInfo> versionsById = ExtractIncludedVersions(root);
 
         if (!root.TryGetProperty("data", out JsonElement data) || data.ValueKind != JsonValueKind.Array)
         {
@@ -192,29 +443,36 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
             }
 
             DateTime? lastModified = GetAttributeDateTime(entry, "lastModifiedTime");
-            int? versionNumber = null;
+            AccVersionInfo? tip = null;
 
-            string? tipId = GetTipVersionId(entry);
-            if (tipId != null && versionsById.TryGetValue(tipId, out (int? VersionNumber, DateTime? LastModifiedUtc) tip))
+            string? tipId = GetRelationshipId(entry, "tip");
+            if (tipId != null)
             {
-                versionNumber = tip.VersionNumber;
-                lastModified ??= tip.LastModifiedUtc;
+                versionsById.TryGetValue(tipId, out tip);
             }
 
             yield return new AccBrowseNode
             {
                 Id = id,
+                ItemId = id,
+                VersionId = tipId,
                 Name = displayName,
                 Kind = AccNodeKind.RvtFile,
-                LastModifiedUtc = lastModified,
-                VersionNumber = versionNumber,
+                LastModifiedUtc = lastModified ?? tip?.LastModifiedUtc,
+                VersionNumber = tip?.VersionNumber,
+                ExtensionType = tip?.ExtensionType,
+                CloudProjectGuid = tip?.ProjectGuid,
+                CloudModelGuid = tip?.ModelGuid,
             };
         }
     }
 
-    private static Dictionary<string, (int? VersionNumber, DateTime? LastModifiedUtc)> ExtractIncludedVersions(JsonElement root)
+    /// <summary>Tip-version metadata cross-referenced onto a folder-contents item — mirrors the same fields <see cref="ParseSearchResults"/> reads directly off a version.</summary>
+    private sealed record AccVersionInfo(int? VersionNumber, DateTime? LastModifiedUtc, string? ExtensionType, string? ProjectGuid, string? ModelGuid);
+
+    private static Dictionary<string, AccVersionInfo> ExtractIncludedVersions(JsonElement root)
     {
-        Dictionary<string, (int?, DateTime?)> map = new();
+        Dictionary<string, AccVersionInfo> map = new(StringComparer.Ordinal);
 
         if (!root.TryGetProperty("included", out JsonElement included) || included.ValueKind != JsonValueKind.Array)
         {
@@ -234,45 +492,47 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
                 continue;
             }
 
-            int? versionNumber = null;
-            if (resource.TryGetProperty("attributes", out JsonElement attrs) &&
-                attrs.TryGetProperty("versionNumber", out JsonElement versionEl) &&
-                versionEl.ValueKind == JsonValueKind.Number && versionEl.TryGetInt32(out int v))
-            {
-                versionNumber = v;
-            }
-
-            DateTime? lastModified = GetAttributeDateTime(resource, "lastModifiedTime");
-            map[id] = (versionNumber, lastModified);
+            map[id] = new AccVersionInfo(
+                GetAttributeInt(resource, "versionNumber"),
+                GetAttributeDateTime(resource, "lastModifiedTime"),
+                GetAttributeExtensionType(resource),
+                GetAttributeExtensionDataString(resource, "projectGuid"),
+                GetAttributeExtensionDataString(resource, "modelGuid"));
         }
 
         return map;
     }
 
-    private static string? GetTipVersionId(JsonElement entry)
-    {
-        if (entry.TryGetProperty("relationships", out JsonElement relationships) &&
-            relationships.TryGetProperty("tip", out JsonElement tip) &&
-            tip.TryGetProperty("data", out JsonElement tipData) &&
-            tipData.TryGetProperty("id", out JsonElement idEl) &&
-            idEl.ValueKind == JsonValueKind.String)
-        {
-            return idEl.GetString();
-        }
-
-        return null;
-    }
-
+    /// <summary>
+    /// Returns the "next" pagination link only if it is an absolute
+    /// https:// URL on the expected APS host — never follows a
+    /// server-supplied link elsewhere, however that link ended up in the
+    /// response.
+    /// </summary>
     private static string? GetNextPageUrl(JsonElement root)
     {
-        if (root.TryGetProperty("links", out JsonElement links) &&
-            links.TryGetProperty("next", out JsonElement next) &&
-            next.TryGetProperty("href", out JsonElement href) &&
-            href.ValueKind == JsonValueKind.String)
+        if (!root.TryGetProperty("links", out JsonElement links) ||
+            !links.TryGetProperty("next", out JsonElement next) ||
+            !next.TryGetProperty("href", out JsonElement href) ||
+            href.ValueKind != JsonValueKind.String)
         {
-            return href.GetString();
+            return null;
         }
 
+        string? url = href.GetString();
+        if (url == null)
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) &&
+            parsed.Scheme == Uri.UriSchemeHttps &&
+            string.Equals(parsed.Host, AllowedPaginationHost, StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        Log.Warning("ACC Data Management: rejected pagination link to an unexpected host");
         return null;
     }
 

@@ -10,11 +10,13 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Toolbar: Back, Refresh, search filter, Cancel -->
+        <!-- Toolbar: Back, Refresh, local filter, Cancel -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
             <Button Content="Back" Command="{Binding BackCommand}" Padding="8,3" Margin="0,0,6,0" />
             <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="8,3" Margin="0,0,6,0" />
@@ -24,30 +26,58 @@
             <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="200" VerticalContentAlignment="Center" />
         </StackPanel>
 
-        <!-- Breadcrumb -->
-        <TextBlock Grid.Row="1" Text="{Binding BreadcrumbText}" Foreground="#667085" Margin="0,0,0,6" TextWrapping="Wrap" />
+        <!-- Search scope: current folder (local filter only, no request) vs recursive/entire-project (explicit Search) -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6">
+            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <ComboBox ItemsSource="{Binding SearchScopes}" SelectedItem="{Binding SearchScope}" Width="220" Margin="0,0,6,0" />
+            <Button Content="Search" Command="{Binding SearchCommand}" Padding="8,3"
+                    Visibility="{Binding IsRecursiveSearchScope, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
 
-        <!-- Item list: folders and RVT items (hubs/projects at shallower levels use the same columns) -->
-        <ListView Grid.Row="2" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
+        <TextBlock Grid.Row="1" HorizontalAlignment="Right" Text="{x:Static local:AccBrowseViewModel.PartialSearchFailureMessage}"
+                   Foreground="#8B6D16" TextWrapping="Wrap" MaxWidth="360"
+                   Visibility="{Binding HasPartialSearchFailure, Converter={StaticResource BoolToVis}}" />
+
+        <!-- Breadcrumb -->
+        <TextBlock Grid.Row="2" Text="{Binding BreadcrumbText}" Foreground="#667085" Margin="0,0,0,6" TextWrapping="Wrap" />
+
+        <!-- Item list: folders and RVT items/search results. Only RVT rows show a selection checkbox. -->
+        <ListView Grid.Row="3" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}"
                   MouseDoubleClick="OnItemDoubleClick">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="Name" Width="320" DisplayMemberBinding="{Binding Name}" />
-                    <GridViewColumn Header="Type" Width="90" DisplayMemberBinding="{Binding Kind, Converter={StaticResource KindLabel}}" />
-                    <GridViewColumn Header="Last Modified" Width="160">
+                    <GridViewColumn Header="Add" Width="36">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsSelected}" Visibility="{Binding IsSelectable, Converter={StaticResource BoolToVis}}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Name" Width="300" DisplayMemberBinding="{Binding Name}" />
+                    <GridViewColumn Header="Type" Width="80" DisplayMemberBinding="{Binding Kind, Converter={StaticResource KindLabel}}" />
+                    <GridViewColumn Header="Folder Path" Width="180" DisplayMemberBinding="{Binding FolderPath}" />
+                    <GridViewColumn Header="Last Modified" Width="140">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding LastModifiedUtc, StringFormat={}{0:yyyy-MM-dd HH:mm} UTC, TargetNullValue=''}" />
                             </DataTemplate>
                         </GridViewColumn.CellTemplate>
                     </GridViewColumn>
-                    <GridViewColumn Header="Version" Width="70" DisplayMemberBinding="{Binding VersionNumber, TargetNullValue=''}" />
+                    <GridViewColumn Header="Version" Width="60" DisplayMemberBinding="{Binding VersionNumber, TargetNullValue=''}" />
                 </GridView>
             </ListView.View>
         </ListView>
 
+        <!-- Selection toolbar -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,6,0,0">
+            <Button Content="Select All Visible" Command="{Binding SelectAllVisibleCommand}" Padding="8,3" Margin="0,0,6,0" />
+            <Button Content="Clear Selection" Command="{Binding ClearSelectionCommand}" Padding="8,3" Margin="0,0,12,0" />
+            <TextBlock Text="{Binding SelectedCount, StringFormat='{}{0} selected'}" VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button Content="Add Selected Models" Command="{Binding AddSelectedModelsCommand}" Padding="8,3" FontWeight="Bold" />
+        </StackPanel>
+
         <!-- Status / loading / empty / error -->
-        <StackPanel Grid.Row="3" Margin="0,6,0,0">
+        <StackPanel Grid.Row="5" Margin="0,6,0,0">
             <TextBlock Text="{Binding LoadingText}" Foreground="#667085"
                        Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
 
