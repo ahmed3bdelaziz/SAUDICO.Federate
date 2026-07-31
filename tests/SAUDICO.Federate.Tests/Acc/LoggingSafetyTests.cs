@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Serilog;
 using Serilog.Core;
 using SAUDICO.Federate.ACC.Authentication;
+using SAUDICO.Federate.ACC.DataManagement;
+using SAUDICO.Federate.ACC.Errors;
 using SAUDICO.Federate.ACC.Tokens;
 using Xunit;
 
@@ -141,6 +144,47 @@ public sealed class LoggingSafetyTests
             Assert.DoesNotContain("access_token", message, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("refresh_token", message, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("code_verifier", message, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task AccDataManagementClient_UnauthorizedRefreshRetryFlow_NeverLogsAccessTokenValues()
+    {
+        const string SecretAccessToken1 = "SECRET-DM-ACCESS-TOKEN-MARKER-aa11bb22";
+        const string SecretAccessToken2 = "SECRET-DM-REFRESHED-TOKEN-MARKER-cc33dd44";
+
+        CapturingSink sink = new CapturingSink();
+        ILogger previous = Log.Logger;
+        Log.Logger = new LoggerConfiguration().WriteTo.Sink(sink).MinimumLevel.Verbose().CreateLogger();
+
+        try
+        {
+            FakeDataManagementTransport transport = new FakeDataManagementTransport();
+            transport.Responses.Enqueue(() => throw new ApsApiException("unauthorized", 401, "unauthorized"));
+            transport.Responses.Enqueue(() => JsonDocument.Parse(
+                """{"links":{"self":{"href":"x"}},"data":[{"type":"hubs","id":"hub-1","attributes":{"name":"Acme Hub"}}]}"""));
+
+            FakeAuthenticationServiceForDataManagement auth = new FakeAuthenticationServiceForDataManagement
+            {
+                AccessToken = SecretAccessToken1,
+                RefreshedAccessToken = SecretAccessToken2,
+            };
+
+            AccDataManagementClient client = new AccDataManagementClient(transport, auth);
+            await client.GetHubsAsync(CancellationToken.None);
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+            Log.Logger = previous;
+        }
+
+        foreach (string message in sink.Messages)
+        {
+            Assert.DoesNotContain(SecretAccessToken1, message, StringComparison.Ordinal);
+            Assert.DoesNotContain(SecretAccessToken2, message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Authorization", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Bearer", message, StringComparison.OrdinalIgnoreCase);
         }
     }
 }
