@@ -55,6 +55,7 @@
                     </GridViewColumn>
                     <GridViewColumn Header="Name" Width="300" DisplayMemberBinding="{Binding Name}" />
                     <GridViewColumn Header="Type" Width="80" DisplayMemberBinding="{Binding Kind, Converter={StaticResource KindLabel}}" />
+                    <GridViewColumn Header="Source" Width="170" DisplayMemberBinding="{Binding SourceLabel}" />
                     <GridViewColumn Header="Folder Path" Width="180" DisplayMemberBinding="{Binding FolderPath}" />
                     <GridViewColumn Header="Last Modified" Width="140">
                         <GridViewColumn.CellTemplate>

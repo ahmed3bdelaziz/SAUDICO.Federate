@@ -165,6 +165,58 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
         };
     }
 
+    public async Task<string?> GetVersionStorageUrnAsync(string projectId, string versionId, CancellationToken cancellationToken)
+    {
+        // The version id contains a "?version=N" query segment, so it MUST be
+        // escaped rather than concatenated raw.
+        string url = $"{BaseUrl}/data/v1/projects/{Uri.EscapeDataString(projectId)}/versions/{Uri.EscapeDataString(versionId)}";
+
+        using JsonDocument document = await GetWithUnauthorizedRetryAsync(url, cancellationToken).ConfigureAwait(false);
+
+        if (!document.RootElement.TryGetProperty("data", out JsonElement data) ||
+            !data.TryGetProperty("relationships", out JsonElement relationships) ||
+            !relationships.TryGetProperty("storage", out JsonElement storage) ||
+            !storage.TryGetProperty("data", out JsonElement storageData) ||
+            !storageData.TryGetProperty("id", out JsonElement idElement) ||
+            idElement.ValueKind != JsonValueKind.String)
+        {
+            Log.Information("ACC Data Management marker: VersionHasNoStorageRelationship");
+            return null;
+        }
+
+        Log.Information("ACC Data Management marker: VersionStorageUrnResolved");
+        return idElement.GetString();
+    }
+
+    public async Task<AccSignedDownload> GetSignedDownloadAsync(string bucketKey, string objectKey, CancellationToken cancellationToken)
+    {
+        string url =
+            $"{BaseUrl}/oss/v2/buckets/{Uri.EscapeDataString(bucketKey)}/objects/{Uri.EscapeDataString(objectKey)}/signeds3download?minutesExpiration=60";
+
+        using JsonDocument document = await GetWithUnauthorizedRetryAsync(url, cancellationToken).ConfigureAwait(false);
+        JsonElement root = document.RootElement;
+
+        AccSignedDownload result = new AccSignedDownload
+        {
+            Status = root.TryGetProperty("status", out JsonElement statusEl) && statusEl.ValueKind == JsonValueKind.String
+                ? statusEl.GetString() ?? ""
+                : "",
+            Url = root.TryGetProperty("url", out JsonElement urlEl) && urlEl.ValueKind == JsonValueKind.String
+                ? urlEl.GetString()
+                : null,
+            Size = root.TryGetProperty("size", out JsonElement sizeEl) && sizeEl.ValueKind == JsonValueKind.Number
+                ? sizeEl.GetInt64()
+                : null,
+        };
+
+        // Never log the signed URL itself — it is a time-limited credential.
+        Log.Information(
+            "ACC Data Management marker: SignedDownloadResolved Status={Status} HasUrl={HasUrl}",
+            result.Status, result.Url != null);
+
+        return result;
+    }
+
     private async Task<(List<AccBrowseNode> Results, bool Failed)> SearchOneTopFolderAsync(
         string projectId, string folderId, SemaphoreSlim gate, CancellationToken cancellationToken)
     {

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using SAUDICO.Federate.Core;
@@ -29,15 +30,49 @@ public static class AccQueueHelper
         jobs.Any(j => j.Kind == ModelKind.Acc && j.AccSource?.ResolutionStatus != AccSourceResolutionStatus.CloudModelVerified);
 
     /// <summary>
-    /// True if the queue contains any ACC job at all, resolved or not.
-    /// Start Federation must refuse to run while this is true: identifier
-    /// resolution (<see cref="AccSourceResolutionStatus.CloudModelVerified"/>)
-    /// is implemented, but actually opening/exporting an ACC-sourced model
-    /// is a separate, not-yet-implemented step — <c>Job.Source</c> for an
-    /// ACC job is a display name, not a real file path, so letting one
-    /// reach <c>Engine.Run</c>/<c>Opener.Open</c> today would fail unsafely
-    /// rather than export anything.
+    /// True if the queue contains any ACC job at all, resolved or not. Kept
+    /// for compatibility/diagnostics — no longer what gates Start
+    /// Federation on its own (see <see cref="HasBlockedAccJob"/>): a
+    /// verified, openable ACC job is now allowed to run.
     /// </summary>
     public static bool HasAnyAccJob(IEnumerable<Job> jobs) =>
         jobs.Any(j => j.Kind == ModelKind.Acc);
+
+    /// <summary>
+    /// True if the queue contains an ACC job that can neither be opened as a
+    /// Revit Cloud Worksharing model nor downloaded as a plain uploaded file.
+    /// Start Federation must refuse to run while this is true.
+    /// </summary>
+    public static bool HasBlockedAccJob(IEnumerable<Job> jobs) =>
+        jobs.Any(j => AccOpenPlanner.IsBlocked(j, out _));
+
+    /// <summary>The first blocked ACC job's specific reason, or null when nothing is blocked.</summary>
+    public static string? FirstBlockReason(IEnumerable<Job> jobs)
+    {
+        foreach (Job job in jobs)
+        {
+            if (AccOpenPlanner.IsBlocked(job, out string? reason))
+            {
+                return reason;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Queued ACC jobs that must be downloaded to a local copy before they can be exported.</summary>
+    public static IReadOnlyList<Job> JobsRequiringDownload(IEnumerable<Job> jobs) =>
+        jobs.Where(AccOpenPlanner.RequiresDownload).ToList();
+
+    /// <summary>True if a queued, CloudModelVerified ACC job is missing a parseable ProjectGuid/ModelGuid.</summary>
+    public static bool HasAccJobWithMissingGuid(IEnumerable<Job> jobs) =>
+        jobs.Any(j => j.Kind == ModelKind.Acc &&
+            j.AccSource?.ResolutionStatus == AccSourceResolutionStatus.CloudModelVerified &&
+            (!Guid.TryParse(j.AccSource.ProjectGuid, out _) || !Guid.TryParse(j.AccSource.ModelGuid, out _)));
+
+    /// <summary>True if a queued, CloudModelVerified ACC job (with valid GUIDs) has a region Revit's cloud-open API does not support.</summary>
+    public static bool HasAccJobWithUnsupportedRegion(IEnumerable<Job> jobs) =>
+        jobs.Any(j => j.Kind == ModelKind.Acc &&
+            j.AccSource?.ResolutionStatus == AccSourceResolutionStatus.CloudModelVerified &&
+            !AccRegionMapper.IsSupportedRegion(j.AccSource.Region));
 }

@@ -253,9 +253,51 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
         {
             AccNodeKind.Hub => LoadAsync(ct => client.GetProjectsAsync(current.HubId!, ct)),
             AccNodeKind.Project => LoadAsync(ct => client.GetTopFoldersAsync(current.HubId!, current.ProjectId!, ct)),
-            AccNodeKind.Folder => LoadAsync(ct => client.GetFolderContentsAsync(current.ProjectId!, current.FolderId!, ct)),
+            // Folder contents carry no hub/project/region context of their own —
+            // the API response is scoped to the folder. Enrich them from the
+            // current path exactly as scoped search results are enriched, so a
+            // model queued by BROWSING carries the same Region/HubId/ProjectId
+            // as one queued by SEARCHING. Without this an ACC job reached the
+            // queue with a null Region and was wrongly refused as an
+            // "unsupported region".
+            AccNodeKind.Folder => LoadAsync(async ct =>
+            {
+                IReadOnlyList<AccBrowseNode> contents =
+                    await client.GetFolderContentsAsync(current.ProjectId!, current.FolderId!, ct).ConfigureAwait(false);
+                return EnrichBrowsedFolderContents(contents, current);
+            }),
             _ => Task.CompletedTask,
         };
+    }
+
+    /// <summary>
+    /// Applies the current path's hub/project/region context to freshly
+    /// browsed folder contents. Unlike <see cref="EnrichSearchResults"/> this
+    /// also supplies <c>FolderId</c>, which a browsed row cannot infer from
+    /// its own response. <c>FolderPath</c> is deliberately left as the API
+    /// supplied it (null when browsing) rather than reconstructed from
+    /// breadcrumb names — the breadcrumb is display text, not the API's own
+    /// <c>pathInProject</c> value.
+    /// </summary>
+    private static IReadOnlyList<AccBrowseNode> EnrichBrowsedFolderContents(
+        IReadOnlyList<AccBrowseNode> contents, AccPathLevel context)
+    {
+        foreach (AccBrowseNode node in contents)
+        {
+            if (node.Kind != AccNodeKind.RvtFile)
+            {
+                continue;
+            }
+
+            node.HubId = context.HubId;
+            node.HubName = context.HubName;
+            node.Region = context.Region;
+            node.ProjectId = context.ProjectId;
+            node.ProjectName = context.ProjectName;
+            node.FolderId = context.FolderId;
+        }
+
+        return contents;
     }
 
     private bool CanRunScopedSearch()

@@ -95,15 +95,145 @@ public sealed class AccQueueHelperTests
     }
 
     [Fact]
-    public void HasAnyAccJob_CloudModelVerifiedJob_StillReturnsTrue_BecauseOpeningIsNotImplementedYet()
+    public void HasAnyAccJob_CloudModelVerifiedJob_StillReturnsTrue()
     {
-        // Identifier resolution existing must NOT be enough to let a job
-        // reach Engine.Run/Opener.Open — ACC opening/export is a separate,
-        // not-yet-implemented step, and Job.Source for an ACC job is a
-        // display name, not a real file path.
+        // HasAnyAccJob just means "any ACC job at all" — it no longer gates
+        // Start Federation by itself now that a CloudModelVerified job with
+        // valid GUIDs/region is openable. See HasBlockedAccJob below for
+        // the actual gate.
         List<Job> jobs = new() { AccJob("item-1", AccSourceResolutionStatus.CloudModelVerified) };
 
         Assert.True(AccQueueHelper.HasAnyAccJob(jobs));
+    }
+
+    private static Job VerifiedAccJob(string projectGuid, string modelGuid, string region) => new Job
+    {
+        Source = "Model.rvt",
+        Kind = ModelKind.Acc,
+        AccSource = new AccCloudSource
+        {
+            ItemId = "item-1",
+            ResolutionStatus = AccSourceResolutionStatus.CloudModelVerified,
+            ProjectGuid = projectGuid,
+            ModelGuid = modelGuid,
+            Region = region,
+        },
+    };
+
+    private static Job DownloadableAccJob(AccSourceResolutionStatus status) => new Job
+    {
+        Source = "Model.rvt",
+        Kind = ModelKind.Acc,
+        AccSource = new AccCloudSource
+        {
+            ItemId = "item-1",
+            ResolutionStatus = status,
+            ProjectId = "b.proj-1",
+            VersionId = "urn:adsk.wipprod:fs.file:vf.abc?version=1",
+        },
+    };
+
+    [Fact]
+    public void HasBlockedAccJob_UnresolvedJobWithoutDownloadIds_ReturnsTrue()
+    {
+        // No ProjectId/VersionId — it can neither be opened by GUID nor downloaded.
+        List<Job> jobs = new() { AccJob("item-1", AccSourceResolutionStatus.Unresolved) };
+
+        Assert.True(AccQueueHelper.HasBlockedAccJob(jobs));
+    }
+
+    [Theory]
+    [InlineData(AccSourceResolutionStatus.UploadedFile)]
+    [InlineData(AccSourceResolutionStatus.Unresolved)]
+    public void HasBlockedAccJob_NonCloudWorksharedJob_IsBlocked_AndPointsAtAddRvt(AccSourceResolutionStatus status)
+    {
+        // The ACC browser only queues cloud-workshared models; ordinary
+        // uploaded RVTs go through "Add RVT" instead, so even a job carrying
+        // full download identifiers must be refused here.
+        List<Job> jobs = new() { DownloadableAccJob(status) };
+
+        Assert.True(AccQueueHelper.HasBlockedAccJob(jobs));
+        Assert.Empty(AccQueueHelper.JobsRequiringDownload(jobs));
+        Assert.Contains("Add RVT", AccQueueHelper.FirstBlockReason(jobs));
+    }
+
+    [Fact]
+    public void RequiresDownload_IsDisabled_SoNoAccJobIsEverDownloaded()
+    {
+        Assert.False(AccOpenPlanner.UploadedFileDownloadEnabled);
+        Assert.False(AccOpenPlanner.RequiresDownload(DownloadableAccJob(AccSourceResolutionStatus.UploadedFile)));
+    }
+
+    [Fact]
+    public void JobsRequiringDownload_CloudWorksharedJob_IsNotDownloaded()
+    {
+        // A genuine cloud-worksharing model is opened by GUID, never downloaded.
+        List<Job> jobs = new() { VerifiedAccJob(System.Guid.NewGuid().ToString(), System.Guid.NewGuid().ToString(), "US") };
+
+        Assert.Empty(AccQueueHelper.JobsRequiringDownload(jobs));
+    }
+
+    [Fact]
+    public void JobsRequiringDownload_LocalAndCentralJobs_AreNeverDownloaded()
+    {
+        List<Job> jobs = new()
+        {
+            new Job { Source = @"C:\models\a.rvt", Kind = ModelKind.Local },
+            new Job { Source = @"C:\models\b.rvt", Kind = ModelKind.Central },
+        };
+
+        Assert.Empty(AccQueueHelper.JobsRequiringDownload(jobs));
+    }
+
+    [Fact]
+    public void HasBlockedAccJob_VerifiedJobWithValidGuidsAndRegion_ReturnsFalse()
+    {
+        List<Job> jobs = new() { VerifiedAccJob(System.Guid.NewGuid().ToString(), System.Guid.NewGuid().ToString(), "US") };
+
+        Assert.False(AccQueueHelper.HasBlockedAccJob(jobs));
+    }
+
+    [Fact]
+    public void HasBlockedAccJob_VerifiedJobWithMissingGuidAndNoDownloadIds_ReturnsTrue()
+    {
+        List<Job> jobs = new() { VerifiedAccJob("", System.Guid.NewGuid().ToString(), "US") };
+
+        Assert.True(AccQueueHelper.HasBlockedAccJob(jobs));
+        Assert.True(AccQueueHelper.HasAccJobWithMissingGuid(jobs));
+        Assert.False(AccQueueHelper.HasAccJobWithUnsupportedRegion(jobs));
+        Assert.Contains("ProjectGuid", AccQueueHelper.FirstBlockReason(jobs));
+    }
+
+    [Fact]
+    public void HasBlockedAccJob_VerifiedJobWithMalformedGuid_ReturnsTrue()
+    {
+        List<Job> jobs = new() { VerifiedAccJob("not-a-guid", System.Guid.NewGuid().ToString(), "US") };
+
+        Assert.True(AccQueueHelper.HasBlockedAccJob(jobs));
+        Assert.True(AccQueueHelper.HasAccJobWithMissingGuid(jobs));
+    }
+
+    [Fact]
+    public void HasBlockedAccJob_VerifiedJobWithUnsupportedRegion_ReturnsTrue()
+    {
+        List<Job> jobs = new() { VerifiedAccJob(System.Guid.NewGuid().ToString(), System.Guid.NewGuid().ToString(), "AUS") };
+
+        Assert.True(AccQueueHelper.HasBlockedAccJob(jobs));
+        Assert.False(AccQueueHelper.HasAccJobWithMissingGuid(jobs));
+        Assert.True(AccQueueHelper.HasAccJobWithUnsupportedRegion(jobs));
+        Assert.Contains("region", AccQueueHelper.FirstBlockReason(jobs));
+    }
+
+    [Fact]
+    public void HasBlockedAccJob_OnlyLocalAndCentralJobs_ReturnsFalse()
+    {
+        List<Job> jobs = new()
+        {
+            new Job { Source = @"C:\models\a.rvt", Kind = ModelKind.Local },
+            new Job { Source = @"C:\models\b.rvt", Kind = ModelKind.Central },
+        };
+
+        Assert.False(AccQueueHelper.HasBlockedAccJob(jobs));
     }
 
     [Fact]

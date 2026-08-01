@@ -40,4 +40,23 @@ public interface IAccDataManagementClient
     /// still aborts the whole operation.
     /// </summary>
     Task<AccSearchOutcome> SearchProjectAsync(string hubId, string projectId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the tip version's OSS storage URN
+    /// (<c>data.relationships.storage.data.id</c>, e.g.
+    /// <c>urn:adsk.objects:os.object:{bucket}/{objectKey}</c>) for a plain
+    /// uploaded file, or null when the version has no storage relationship
+    /// (which is the case for a Revit Cloud Worksharing model — those are
+    /// opened by GUID, never downloaded). Read-only GET.
+    /// </summary>
+    Task<string?> GetVersionStorageUrnAsync(string projectId, string versionId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Asks OSS for a short-lived, signed S3 download URL for an object.
+    /// Read-only GET against
+    /// <c>/oss/v2/buckets/{bucketKey}/objects/{objectKey}/signeds3download</c>
+    /// (verified against the official aps-sdk-openapi <c>oss.yaml</c> spec;
+    /// requires only the already-configured <c>data:read</c> scope).
+    /// </summary>
+    Task<AccSignedDownload> GetSignedDownloadAsync(string bucketKey, string objectKey, CancellationToken cancellationToken);
 }

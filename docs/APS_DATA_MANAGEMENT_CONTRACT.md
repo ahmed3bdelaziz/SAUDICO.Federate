@@ -33,6 +33,33 @@ model's identifiers does not open it; that remains a separate, not-yet-implement
 | List a project's top folders | GET | `/project/v1/hubs/{hub_id}/projects/{project_id}/topFolders` | No (`JsonApiLinksSelf`) |
 | List a folder's contents | GET | `/data/v1/projects/{project_id}/folders/{folder_id}/contents` | Yes (`FolderContentsLinks.Next.Href`) |
 | Recursive folder search | GET | `/data/v1/projects/{project_id}/folders/{folder_id}/search` | Yes (`Search.Links` is `PaginationInfo`, same shape as Projects) |
+| Version detail (storage lookup) | GET | `/data/v1/projects/{project_id}/versions/{version_id}` | No |
+| OSS signed download URL | GET | `/oss/v2/buckets/{bucketKey}/objects/{objectKey}/signeds3download` | No |
+
+## Uploaded-file download (verified against `aps-sdk-openapi/oss/oss.yaml`, access date 2026-07-31)
+
+A plain uploaded RVT in ACC Docs is **not** a Revit Cloud Model: it has no
+`projectGuid`/`modelGuid`, `ModelPathUtils.ConvertCloudGUIDsToCloudPath` cannot address it,
+and no Revit API opens it from ACC. It is exported by downloading a local temporary copy:
+
+1. `GET /data/v1/projects/{project_id}/versions/{version_id}` → `data.relationships.storage.data.id`,
+   an OSS URN of the form `urn:adsk.objects:os.object:{bucketKey}/{objectKey}`. A Revit Cloud
+   Worksharing version has **no** storage relationship — that absence is the signal to use the
+   GUID-based open path instead, and is returned as `null` rather than guessed around.
+2. Split the URN on the **first** `/` after the `urn:adsk.objects:os.object:` prefix only — the
+   object key legitimately contains further `/` characters.
+3. `GET /oss/v2/buckets/{bucketKey}/objects/{objectKey}/signeds3download?minutesExpiration=60`.
+   Response: `status` ∈ {`complete`, `chunked`, `fallback`}, `url` (present for
+   `complete`/`fallback`), `urls` (per-chunk, for `chunked`), `size`, `sha1`. Requires only the
+   `data:read` scope already configured for browsing — no new scope or consent.
+   `minutesExpiration` accepts 1–60 (default 2); 60 is used so a large transfer can start in time.
+4. `GET` the signed URL and stream it to disk. The signed URL carries its own authorization —
+   **the bearer token must never be attached to it**.
+
+`chunked` is deliberately **not** implemented: multi-part chunk assembly could not be verified
+against a live response, so that status fails the one job with a clear message rather than being
+guessed at. All four steps are GETs; nothing is ever uploaded, renamed, moved, published, or
+deleted in ACC.
 
 All five require `Authorization: Bearer <access_token>` and `Accept: application/json` — identical
 transport to Authentication v2's `/userinfo` call, reused via the existing `IApsHttpTransport`.

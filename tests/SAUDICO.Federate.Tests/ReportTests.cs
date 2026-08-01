@@ -104,4 +104,35 @@ public sealed class ReportTests : IDisposable
 
         Assert.Contains("\"\",\"\",\"\",\"\"", lines[1]);
     }
+
+    [Fact]
+    public void Csv_AccJob_ReportsNotApplicableCloudSource_AndNeverInventsFileMetadata()
+    {
+        Job job = MakeJob("Architectural Model.rvt", DateTime.UtcNow);
+        job.Kind = ModelKind.Acc;
+        job.AccSource = new AccCloudSource
+        {
+            ItemId = "item-1",
+            Region = "US",
+            ProjectGuid = Guid.NewGuid().ToString(),
+            ModelGuid = Guid.NewGuid().ToString(),
+            ResolutionStatus = AccSourceResolutionStatus.CloudModelVerified,
+        };
+
+        // Exactly what Engine.Run assigns for an ACC job: no before/after
+        // snapshot is ever captured, so nothing can be fabricated for it.
+        job.IntegrityBefore = null;
+        job.IntegrityAfter = null;
+        job.IntegrityStatus = SourceIntegrityStatus.NotApplicableCloudSource;
+        job.IntegrityMessage = "Source integrity checks are not applicable to ACC cloud-hosted sources.";
+
+        string path = Report.Write(directory, new List<Job> { job });
+        string content = File.ReadAllText(path);
+        string[] lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Contains("NotApplicableCloudSource", content);
+        Assert.Contains("not applicable to ACC cloud-hosted sources", content);
+        // All eight before/after file-metadata columns must be blank.
+        Assert.Contains("\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"", lines[1]);
+    }
 }

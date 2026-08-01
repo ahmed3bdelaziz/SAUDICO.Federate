@@ -52,8 +52,43 @@ public sealed class AccBrowseNode : INotifyPropertyChanged
 
     public bool IsNavigable => Kind == AccNodeKind.Hub || Kind == AccNodeKind.Project || Kind == AccNodeKind.Folder;
 
-    /// <summary>Only RVT file rows may be selected for the federation queue — folders/hubs/projects remain navigation-only.</summary>
-    public bool IsSelectable => Kind == AccNodeKind.RvtFile;
+    /// <summary>
+    /// True only for a genuine Revit Cloud Worksharing (C4R) model — an RVT
+    /// row whose tip version carries the official cloud-model extension type
+    /// AND both a parseable projectGuid and modelGuid.
+    /// </summary>
+    public bool IsCloudWorksharedModel =>
+        Kind == AccNodeKind.RvtFile &&
+        AccCloudModelClassifier.Classify(ExtensionType, CloudProjectGuid, CloudModelGuid) == AccResolutionStatus.CloudModelVerified;
+
+    /// <summary>
+    /// Only Revit Cloud Worksharing models may be queued from the ACC
+    /// browser. A plain uploaded RVT sitting in ACC Docs is an ordinary
+    /// file, not a cloud model, and is added through the main window's
+    /// "Add RVT" file picker instead — so this browser stays reserved for
+    /// genuinely cloud-hosted models. Folders/hubs/projects remain
+    /// navigation-only, unchanged.
+    /// </summary>
+    public bool IsSelectable => IsCloudWorksharedModel;
+
+    /// <summary>Human-readable reason a row is or isn't queueable, shown in the browser's Source column.</summary>
+    public string SourceLabel
+    {
+        get
+        {
+            if (Kind != AccNodeKind.RvtFile)
+            {
+                return "";
+            }
+
+            return AccCloudModelClassifier.Classify(ExtensionType, CloudProjectGuid, CloudModelGuid) switch
+            {
+                AccResolutionStatus.CloudModelVerified => "Cloud workshared",
+                AccResolutionStatus.UploadedFile => "Uploaded file — use Add RVT",
+                _ => "Not a cloud model — use Add RVT",
+            };
+        }
+    }
 
     private bool isSelected;
 

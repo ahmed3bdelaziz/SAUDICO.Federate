@@ -26,6 +26,13 @@ internal sealed class FakeAccDataManagementClient : IAccDataManagementClient
     public AccSearchOutcome SearchProjectResult = new AccSearchOutcome();
     public Exception? ThrowOnGetHubs;
 
+    // Browsing never downloads — the browse ViewModel must never call these.
+    public Task<string?> GetVersionStorageUrnAsync(string projectId, string versionId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Browsing must never resolve a storage URN.");
+
+    public Task<AccSignedDownload> GetSignedDownloadAsync(string bucketKey, string objectKey, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Browsing must never request a signed download URL.");
+
     public Task<IReadOnlyList<AccBrowseNode>> GetHubsAsync(CancellationToken cancellationToken)
     {
         GetHubsCallCount++;
@@ -232,6 +239,93 @@ public sealed class AccBrowseViewModelTests
         Assert.Single(viewModel.Items);
     }
 
+    /// <summary>
+    /// A genuine Revit Cloud Worksharing row — the only kind the ACC browser
+    /// allows to be queued. A plain uploaded RVT is deliberately not
+    /// selectable (see <see cref="OnlyCloudWorksharedRowsAreSelectable"/>).
+    /// </summary>
+    private static AccBrowseNode CloudRvt(string id, string name) => new AccBrowseNode
+    {
+        Id = id,
+        ItemId = id,
+        Name = name,
+        Kind = AccNodeKind.RvtFile,
+        ExtensionType = AccCloudModelClassifier.RevitCloudModelExtensionType,
+        CloudProjectGuid = Guid.NewGuid().ToString(),
+        CloudModelGuid = Guid.NewGuid().ToString(),
+    };
+
+    [Fact]
+    public async Task BrowsedFolderContents_CarryHubProjectAndRegionContext()
+    {
+        // Regression: folder contents were previously enriched only for the
+        // two SEARCH scopes, so a model queued by BROWSING reached the
+        // federation queue with a null Region and was wrongly refused as an
+        // "unsupported region".
+        FakeAccDataManagementClient client = new FakeAccDataManagementClient();
+        client.FolderContentsResult = new List<AccBrowseNode> { CloudRvt("item-1", "Cloud.rvt") };
+        AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
+
+        AccBrowseNode row = viewModel.Items.Single(i => i.Kind == AccNodeKind.RvtFile);
+        Assert.Equal("US", row.Region);
+        Assert.Equal("hub-1", row.HubId);
+        Assert.Equal("proj-1", row.ProjectId);
+        Assert.Equal("folder-1", row.FolderId);
+    }
+
+    [Fact]
+    public async Task BrowsedFolderRows_AreNotGivenAFabricatedFolderPath()
+    {
+        // The API supplies pathInProject only for search results; browsing
+        // must leave it null rather than reconstruct it from breadcrumb text.
+        FakeAccDataManagementClient client = new FakeAccDataManagementClient();
+        client.FolderContentsResult = new List<AccBrowseNode> { CloudRvt("item-1", "Cloud.rvt") };
+        AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
+
+        Assert.Null(viewModel.Items.Single(i => i.Kind == AccNodeKind.RvtFile).FolderPath);
+    }
+
+    [Fact]
+    public async Task OnlyCloudWorksharedRowsAreSelectable()
+    {
+        FakeAccDataManagementClient client = new FakeAccDataManagementClient();
+        client.FolderContentsResult = new List<AccBrowseNode>
+        {
+            CloudRvt("item-1", "Cloud.rvt"),
+            // A plain uploaded RVT: right extension type for a file, no cloud GUIDs.
+            new AccBrowseNode { Id = "item-2", ItemId = "item-2", Name = "Uploaded.rvt", Kind = AccNodeKind.RvtFile, ExtensionType = "items:autodesk.bim360:File" },
+            // An RVT whose tip version carried no usable metadata at all.
+            new AccBrowseNode { Id = "item-3", ItemId = "item-3", Name = "Unknown.rvt", Kind = AccNodeKind.RvtFile },
+        };
+        AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
+
+        Assert.True(viewModel.Items.Single(i => i.Name == "Cloud.rvt").IsSelectable);
+        Assert.False(viewModel.Items.Single(i => i.Name == "Uploaded.rvt").IsSelectable);
+        Assert.False(viewModel.Items.Single(i => i.Name == "Unknown.rvt").IsSelectable);
+
+        // Select All must never pick up a non-cloud row.
+        viewModel.SelectAllVisibleCommand.Execute(null);
+        Assert.Equal(1, viewModel.SelectedCount);
+        Assert.Equal("Cloud.rvt", viewModel.Items.Single(i => i.IsSelected).Name);
+    }
+
+    [Fact]
+    public async Task NonCloudRows_ExplainWhyTheyCannotBeQueued()
+    {
+        FakeAccDataManagementClient client = new FakeAccDataManagementClient();
+        client.FolderContentsResult = new List<AccBrowseNode>
+        {
+            CloudRvt("item-1", "Cloud.rvt"),
+            new AccBrowseNode { Id = "item-2", ItemId = "item-2", Name = "Uploaded.rvt", Kind = AccNodeKind.RvtFile, ExtensionType = "items:autodesk.bim360:File" },
+            new AccBrowseNode { Id = "sub-1", Name = "Subfolder", Kind = AccNodeKind.Folder },
+        };
+        AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
+
+        Assert.Equal("Cloud workshared", viewModel.Items.Single(i => i.Name == "Cloud.rvt").SourceLabel);
+        Assert.Contains("Add RVT", viewModel.Items.Single(i => i.Name == "Uploaded.rvt").SourceLabel);
+        Assert.Equal("", viewModel.Items.Single(i => i.Kind == AccNodeKind.Folder).SourceLabel);
+    }
+
     [Fact]
     public async Task SelectAllVisible_SelectsOnlyRvtRows_NotFolders()
     {
@@ -239,8 +333,8 @@ public sealed class AccBrowseViewModelTests
         client.FolderContentsResult = new List<AccBrowseNode>
         {
             new AccBrowseNode { Id = "sub-1", Name = "Subfolder", Kind = AccNodeKind.Folder },
-            new AccBrowseNode { Id = "item-1", ItemId = "item-1", Name = "A.rvt", Kind = AccNodeKind.RvtFile },
-            new AccBrowseNode { Id = "item-2", ItemId = "item-2", Name = "B.rvt", Kind = AccNodeKind.RvtFile },
+            CloudRvt("item-1", "A.rvt"),
+            CloudRvt("item-2", "B.rvt"),
         };
         AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
 
@@ -257,7 +351,7 @@ public sealed class AccBrowseViewModelTests
         FakeAccDataManagementClient client = new FakeAccDataManagementClient();
         client.FolderContentsResult = new List<AccBrowseNode>
         {
-            new AccBrowseNode { Id = "item-1", ItemId = "item-1", Name = "A.rvt", Kind = AccNodeKind.RvtFile },
+            CloudRvt("item-1", "A.rvt"),
         };
         AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
         viewModel.SelectAllVisibleCommand.Execute(null);
@@ -274,7 +368,7 @@ public sealed class AccBrowseViewModelTests
         FakeAccDataManagementClient client = new FakeAccDataManagementClient();
         client.FolderContentsResult = new List<AccBrowseNode>
         {
-            new AccBrowseNode { Id = "item-1", ItemId = "item-1", Name = "A.rvt", Kind = AccNodeKind.RvtFile },
+            CloudRvt("item-1", "A.rvt"),
         };
         AccBrowseViewModel viewModel = await NavigateToFolderAsync(client);
 
@@ -289,8 +383,8 @@ public sealed class AccBrowseViewModelTests
         FakeAccDataManagementClient client = new FakeAccDataManagementClient();
         client.FolderContentsResult = new List<AccBrowseNode>
         {
-            new AccBrowseNode { Id = "item-1", ItemId = "item-1", Name = "A.rvt", Kind = AccNodeKind.RvtFile },
-            new AccBrowseNode { Id = "item-2", ItemId = "item-2", Name = "B.rvt", Kind = AccNodeKind.RvtFile },
+            CloudRvt("item-1", "A.rvt"),
+            CloudRvt("item-2", "B.rvt"),
         };
 
         IReadOnlyList<AccBrowseNode>? handedOff = null;
