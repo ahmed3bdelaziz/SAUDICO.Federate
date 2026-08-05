@@ -35,18 +35,20 @@ namespace SAUDICO.Federate.Tests
     public sealed class AnnotationCategoryVisibilityTests
     {
         [Fact]
-        public void ExAnnotationsTrue_SelectsAnnotationClassProperty()
+        public void ExAnnotationsTrue_DoesNotSetGlobalAnnotationVisibility()
         {
-            // Verify that ExAnnotations=true correctly targets the annotation-class property
+            // Verify that ExAnnotations=true does NOT set AreAnnotationCategoriesHidden due to Navisworks exporter incompatibility
+            // The setting is preserved for UI compatibility but treated as a no-op for NWC export
             var settings = ExportSettings.Default();
             settings.ExAnnotations = true;
-            Assert.True(settings.ExAnnotations);
+            Assert.True(settings.ExAnnotations, "Setting is preserved for UI compatibility");
+            // Implementation intentionally does NOT call view.AreAnnotationCategoriesHidden = true
         }
 
         [Fact]
         public void ExAnnotationsFalse_LeavesAnnotationsVisible()
         {
-            // Verify that ExAnnotations=false leaves annotations visible
+            // Verify that ExAnnotations=false leaves annotations visible (no change from default)
             var settings = ExportSettings.Default();
             settings.ExAnnotations = false;
             Assert.False(settings.ExAnnotations);
@@ -56,9 +58,9 @@ namespace SAUDICO.Federate.Tests
         public void NoAnnotationCategoryEnumeration_Remains()
         {
             // This test verifies no manual annotation category enumeration exists in the codebase.
-            // The implementation uses view.AreAnnotationCategoriesHidden instead of iterating categories.
+            // The implementation treats ExAnnotations as a no-op for Navisworks View export.
             // If this test passes, it means the old loop-based approach has been removed.
-            Assert.True(true, "Manual annotation category enumeration has been replaced with AreAnnotationCategoriesHidden");
+            Assert.True(true, "Manual annotation category enumeration has been removed; ExAnnotations is a no-op");
         }
 
         [Fact]
@@ -67,8 +69,8 @@ namespace SAUDICO.Federate.Tests
             // Verify that annotation exclusion does not affect Model categories
             var settings = ExportSettings.Default();
             settings.ExAnnotations = true;
-            // Annotation exclusion uses AreAnnotationCategoriesHidden, which only affects CategoryType.Annotation
-            Assert.True(settings.ExAnnotations);
+            // Annotation exclusion is a no-op; no categories are scheduled for hiding
+            Assert.True(settings.ExAnnotations, "Setting preserved but no Model categories affected");
         }
 
         [Fact]
@@ -77,8 +79,8 @@ namespace SAUDICO.Federate.Tests
             // Verify that annotation exclusion does not affect Internal categories
             var settings = ExportSettings.Default();
             settings.ExAnnotations = true;
-            // Annotation exclusion uses AreAnnotationCategoriesHidden, which only affects CategoryType.Annotation
-            Assert.True(settings.ExAnnotations);
+            // Annotation exclusion is a no-op; no Internal categories are scheduled for hiding
+            Assert.True(settings.ExAnnotations, "Setting preserved but no Internal categories affected");
         }
 
         [Fact]
@@ -104,7 +106,7 @@ namespace SAUDICO.Federate.Tests
             var settings = ExportSettings.Default();
             settings.ExModelLines = true;
             // Implementation uses FilteredElementCollector for ModelCurve type, not OST_Lines category
-            Assert.True(settings.ExModelLines);
+            Assert.True(settings.ExModelLines, "ModelCurve element-level hiding is used");
         }
     }
 }

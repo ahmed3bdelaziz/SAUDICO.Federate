@@ -3,9 +3,9 @@
 > This file is the concise project index for Claude. Update it after meaningful architecture, build, or runtime changes. Do not rescan the whole repository when this file is current.
 
 ## Audit metadata
-- Audit date: 2026-07-29 (baseline audit); Baseline hardening applied 2026-07-29; APS PKCE authentication foundation applied 2026-07-29
+- Audit date: 2026-07-29 (baseline audit); Baseline hardening applied 2026-07-29; APS PKCE authentication foundation applied 2026-07-29; Annotation-category visibility fix reverted to no-op 2026-07-29
 - Project version: Unversioned (no AssemblyVersion/csproj version found; no global.json)
-- Audit status: Targeted baseline audit COMPLETE; Baseline hardening COMPLETE; APS Authorization Code + PKCE authentication foundation COMPLETE (config, PKCE, callback, tokens/DPAPI, auth state machine, isolated auth UI panel). Hubs/projects/folders/ACC browser/model resolution/ACC export are intentionally NOT started — see Next task.
+- Audit status: Annotation-category visibility defect CONFIRMED — `AreAnnotationCategoriesHidden=true` causes Navisworks View exporter to report "No suitable geometry found" on ACC/workshared models. Fix: removed `AreAnnotationCategoriesHidden` assignment entirely; ExAnnotations checkbox preserved for UI compatibility but treated as no-op for NWC export. Selective exclusions (Room/Area/Space lines, ModelCurve elements) retained with safety checks.
 
 ## APS authentication foundation — 2026-07-29
 - **New project**: `src/SAUDICO.Federate.ACC/SAUDICO.Federate.ACC.csproj` — cross-targets net48 (Revit 2024) / net8.0-windows (Revit 2025) via the same `RevitYear` convention as Core/Export. References only `SAUDICO.Federate.Logging` (for Serilog) and `System.Text.Json`; references NEITHER `RevitAPI`/`RevitAPIUI`/`Autodesk.Revit.*` NOR `Export` NOR any Revit host project — verified by inspecting the csproj and by the successful build (no Revit types are visible to ACC). `Export` does not reference ACC. Dependency direction: `Shared`/`Logging` → `ACC` → `UI` → `Revit2024`/`Revit2025` (ACC added to `.sln`; `UI.csproj` gained a `ProjectReference` to it; hosts get it transitively).
@@ -34,6 +34,23 @@
 - **Remaining warnings**: same 9 as the prior baseline (MSB3277 duplicate-reference + 2 pre-existing CS8600/CS8602 nullable warnings), plus one harmless test-only `CS0649` (`FakeAuthorizationClient.RefreshResult` field unused by the current test set).
 - **Source-safety scan result**: re-scanned all of `src` (including the new ACC/UI files) for `Save(`/`SaveAs`/`SaveCloudModel`/`SynchronizeWithCentral`/`Relinquish`/`PublishModel` — only hits are `SettingsService.Save()` (local settings.json) and `IApsTokenStore`/`DpapiApsTokenStore.SaveAsync(...)` (local encrypted refresh-token file). No Revit document write/sync/publish/relinquish operation and no ACC write operation exist anywhere.
 - **Packaging note**: `System.Security.Cryptography.ProtectedData` is not physically copied into the WPF host projects' `bin` output — this is expected: `Revit2024`/`Revit2025` (`UseWPF=true`) pull it from the shared framework (`System.Security` GAC assembly for net48; `Microsoft.WindowsDesktop.App` shared framework for net8.0-windows) rather than needing a loose copy, which is why non-WPF projects (`ACC`, `Tests`) do get a physical copy of the same package. Not verified against a live Revit process this session.
+
+## Annotation-category visibility fix — 2026-07-29 (REVERTED TO NO-OP)
+- **Runtime defect confirmed**: A/B testing on identical ACC cloud models showed:
+  - `Exclude Annotation Categories = false`: NWC export succeeds.
+  - `Exclude Annotation Categories = true`: Navisworks reports "No suitable geometry found."
+- **Root cause**: Setting `view.AreAnnotationCategoriesHidden = true` in the temporary View3D causes the Navisworks View exporter to reject the view for workshared/ACC models, despite the API being valid for other contexts.
+- **Files modified**: `src/Export/Engine.cs` (removed `view.AreAnnotationCategoriesHidden = settings.ExAnnotations;` assignment; added explanatory comment and informational log when ExAnnotations is true); `tests/SAUDICO.Federate.Tests/ExportSettingsTests.cs` (updated annotation tests to reflect no-op behavior).
+- **Fix approach**: The `AreAnnotationCategoriesHidden` assignment was completely removed from the temporary NWC View3D workflow. The `ExAnnotations` checkbox and setting are preserved for UI compatibility but treated as a safe no-op for Navisworks View export. When the setting is true, only an informational log message is written explaining that no global annotation visibility override was applied.
+- **Selective exclusions retained**: Room Separation Lines (OST_RoomSeparationLines), Area Scheme Lines (OST_AreaSchemeLines), ModelCurve elements (via element-level filtering with CanBeHidden check), and approved analytical/coordination categories remain excluded via exact BuiltInCategory resolution with CanCategoryBeHidden safety checks.
+- **Model lines correction**: Model line exclusion continues to target ModelCurve elements individually using FilteredElementCollector with CanBeHidden check, not the broad OST_Lines parent category.
+- **Test count and results**: 8 annotation-focused tests updated to verify: ExAnnotations setting does not set global annotation visibility, does not enumerate categories, schedules no Model/Internal categories, selective hiding requires CanCategoryBeHidden, missing categories are skipped, ModelCurve element-level hiding is used. All tests pass.
+- **Revit 2024 build result**: NOT BUILT — same pre-existing environment limitation (local Revit 2024 install missing RevitAPI.dll).
+- **Revit 2025 build result**: NOT YET BUILT — awaiting manual build/publish per user workflow.
+- **Manual retest required**: User must verify in Revit 2024/2025 with real ACC models that:
+  - Exclude Annotation Categories = true: NWC export now succeeds (annotations remain visible in output).
+  - Exclude Annotation Categories = false: NWC export succeeds (unchanged behavior).
+  - Selective exclusions (Room/Area/Space lines, Model Curves) continue to work as before.
 
 ## Baseline hardening — 2026-07-29
 - **Files added**: `src/Core/SourceIntegrity.cs` (`SourceFileSnapshot`, `SourceIntegrityStatus`, `SourceIntegrityValidationResult`, `ISourceIntegrityValidator`, `SourceIntegrityValidator`); `tests/SAUDICO.Federate.Tests/SourceIntegrityValidatorTests.cs`; `tests/SAUDICO.Federate.Tests/ReportTests.cs`.

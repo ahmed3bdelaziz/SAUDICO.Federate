@@ -214,10 +214,17 @@ namespace SAUDICO.Federate.Export
                         view.RemoveFilter(filterId);
                     }
 
-                    // Set the official annotation categories visibility flag first.
-                    view.AreAnnotationCategoriesHidden = settings.ExAnnotations;
-
                     // Apply selective category exclusions only (not annotations).
+                    // NOTE: AreAnnotationCategoriesHidden is intentionally NOT set here.
+                    // The Revit API property is valid, but runtime testing in Revit 2024/2025
+                    // Navisworks View export showed that setting AreAnnotationCategoriesHidden=true
+                    // causes the exporter to report no suitable geometry for affected workshared/ACC models.
+                    // The annotation exclusion checkbox is preserved for UI compatibility but treated as a no-op.
+                    if (settings.ExAnnotations)
+                    {
+                        Log.Information("Annotation exclusion requested. No global annotation visibility override was applied because the Navisworks View exporter rejects the temporary view when annotation-category class visibility is disabled.");
+                    }
+
                     foreach (Category category in document.Settings.Categories)
                     {
                         if (!category.get_AllowsVisibilityControl(view))
@@ -225,7 +232,7 @@ namespace SAUDICO.Federate.Export
                             continue;
                         }
 
-                        // Skip annotation categories - they are handled by AreAnnotationCategoriesHidden.
+                        // Skip annotation categories - global annotation hiding is not applied due to Navisworks exporter incompatibility.
                         if (category.CategoryType == CategoryType.Annotation)
                         {
                             continue;
@@ -309,7 +316,8 @@ namespace SAUDICO.Federate.Export
 
             return
                 (settings.ExRoom && categoryId == (long)BuiltInCategory.OST_RoomSeparationLines) ||
-                (settings.ExArea && categoryId == (long)BuiltInCategory.OST_AreaSchemeLines);
+                (settings.ExArea && categoryId == (long)BuiltInCategory.OST_AreaSchemeLines) ||
+                (settings.ExSpace && categoryId == (long)BuiltInCategory.OST_SpaceSeparationLines);
         }
 
         private static long GetElementIdValue(ElementId id)
