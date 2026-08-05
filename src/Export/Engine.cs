@@ -214,6 +214,10 @@ namespace SAUDICO.Federate.Export
                         view.RemoveFilter(filterId);
                     }
 
+                    // Set the official annotation categories visibility flag first.
+                    view.AreAnnotationCategoriesHidden = settings.ExAnnotations;
+
+                    // Apply selective category exclusions only (not annotations).
                     foreach (Category category in document.Settings.Categories)
                     {
                         if (!category.get_AllowsVisibilityControl(view))
@@ -221,13 +225,26 @@ namespace SAUDICO.Federate.Export
                             continue;
                         }
 
-                        bool hide =
-                            (settings.ExAnnotations && category.CategoryType == CategoryType.Annotation) ||
-                            IsExcludedCategory(category, settings);
+                        // Skip annotation categories - they are handled by AreAnnotationCategoriesHidden.
+                        if (category.CategoryType == CategoryType.Annotation)
+                        {
+                            continue;
+                        }
+
+                        if (!IsExcludedCategory(category, settings))
+                        {
+                            continue;
+                        }
+
+                        // Verify the category can be hidden in this view before attempting.
+                        if (!view.CanCategoryBeHidden(category.Id))
+                        {
+                            continue;
+                        }
 
                         try
                         {
-                            view.SetCategoryHidden(category.Id, hide);
+                            view.SetCategoryHidden(category.Id, true);
                             view.SetCategoryOverrides(category.Id, new OverrideGraphicSettings());
                         }
                         catch
@@ -236,14 +253,31 @@ namespace SAUDICO.Federate.Export
                         }
                     }
 
-                    if (settings.ExModelLines || settings.ExRoom || settings.ExArea || settings.ExSpace)
+                    // Hide ModelCurve elements when ExModelLines is requested.
+                    if (settings.ExModelLines)
+                    {
+                        var modelCurveIds = new FilteredElementCollector(document, view.Id)
+                            .OfClass(typeof(ModelCurve))
+                            .WhereElementIsNotElementType()
+                            .Cast<ModelCurve>()
+                            .Where(x => x.CanBeHidden(view))
+                            .Select(x => x.Id)
+                            .ToList();
+
+                        if (modelCurveIds.Count > 0)
+                        {
+                            view.HideElements(modelCurveIds);
+                        }
+                    }
+
+                    // Hide Room, Area, and Space curve elements by category.
+                    if (settings.ExRoom || settings.ExArea || settings.ExSpace)
                     {
                         var curveIds = new FilteredElementCollector(document, view.Id)
                             .OfClass(typeof(CurveElement))
                             .WhereElementIsNotElementType()
                             .Cast<CurveElement>()
-                            .Where(x => x.Category != null &&
-                                (settings.ExModelLines || IsExcludedCategory(x.Category, settings)))
+                            .Where(x => x.Category != null && IsExcludedCategory(x.Category, settings))
                             .Where(x => x.CanBeHidden(view))
                             .Select(x => x.Id)
                             .ToList();
@@ -275,8 +309,7 @@ namespace SAUDICO.Federate.Export
 
             return
                 (settings.ExRoom && categoryId == (long)BuiltInCategory.OST_RoomSeparationLines) ||
-                (settings.ExArea && categoryId == (long)BuiltInCategory.OST_AreaSchemeLines) ||
-                (settings.ExModelLines && categoryId == (long)BuiltInCategory.OST_Lines);
+                (settings.ExArea && categoryId == (long)BuiltInCategory.OST_AreaSchemeLines);
         }
 
         private static long GetElementIdValue(ElementId id)
