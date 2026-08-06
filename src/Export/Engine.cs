@@ -18,25 +18,47 @@ namespace SAUDICO.Federate.Export
 
         public static Result Run(Job job, Application application, Action<string> log, ISourceIntegrityValidator integrityValidator)
         {
-            Document document = null!;
+            Document? document = null;
+            Exception? primaryException = null;
+            Exception? closeException = null;
+            
             job.Start = DateTime.Now;
             Result result;
 
-            // Step 1: capture the source snapshot before the document is opened.
-            SourceFileSnapshot before = integrityValidator.Capture(job.Source);
-            job.IntegrityBefore = before;
-
-            if (job.Settings.Log)
-            {
-                Log.Information(
-                    "Job started {Source} {SourceType} {OpeningPolicy} {Start} {Output} {Coordinates} {DetailLevel} {Parameters} {ExportLinks} {DivideLevels} {Faceting}",
-                    job.Source, job.Kind, OpeningPolicy(job.Kind), job.Start, job.OutputFolder,
-                    job.Settings.Coordinates, job.Settings.Detail, job.Settings.Parameters,
-                    job.Settings.ExportLinks, job.Settings.DivideLevels, job.Settings.Faceting);
-            }
-
             try
             {
+                // Step 1: capture the source snapshot before the document is opened (file sources only).
+                SourceFileSnapshot? before = null;
+                if (job.SourceKind != SourceKind.AccCloudModel)
+                {
+                    try
+                    {
+                        before = integrityValidator.Capture(job.LocalFilePath!);
+                        job.IntegrityBefore = before;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(ex, "Failed to capture pre-open integrity snapshot for {Source}", job.Source);
+                        job.State = State.Failed;
+                        job.Error = $"Source integrity check failed before opening: {ex.Message}";
+                        return Result.Fail(job.Error);
+                    }
+                }
+                else
+                {
+                    job.IntegrityStatus = SourceIntegrityStatus.NotApplicableCloudSource;
+                    job.IntegrityMessage = "Source integrity validation not applicable for ACC cloud models";
+                }
+
+                if (job.Settings.Log)
+                {
+                    Log.Information(
+                        "Job started {Source} {SourceType} {OpeningPolicy} {Start} {Output} {Coordinates} {DetailLevel} {Parameters} {ExportLinks} {DivideLevels} {Faceting}",
+                        job.Source, job.SourceKind, OpeningPolicy(job.SourceKind), job.Start, job.OutputFolder,
+                        job.Settings.Coordinates, job.Settings.Detail, job.Settings.Parameters,
+                        job.Settings.ExportLinks, job.Settings.DivideLevels, job.Settings.Faceting);
+                }
+
                 // Step 2: open the document using the safety-verified opening policy.
                 job.State = State.Opening;
                 log("Opening model");
@@ -64,6 +86,7 @@ namespace SAUDICO.Federate.Export
             }
             catch (Exception ex)
             {
+                primaryException = ex;
                 result = Result.Fail(ex.Message);
 
                 // Fatal/unhandled errors are always logged, regardless of the Export Log setting.
@@ -75,33 +98,77 @@ namespace SAUDICO.Federate.Export
                 if (document != null && document.IsValidObject)
                 {
                     job.State = State.Closing;
-                    document.Close(false);
+                    try
+                    {
+                        bool closeSuccess = document.Close(false);
+                        if (!closeSuccess)
+                        {
+                            closeException = new InvalidOperationException($"Revit returned false while closing the source document: {job.Source}");
+                            Log.Error("Revit API returned false during Close(false) for {Source}", job.Source);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        closeException = ex;
+                        Log.Error(ex, "Exception thrown during Close(false) for {Source}", job.Source);
+                    }
                 }
 
                 job.End = DateTime.Now;
             }
 
-            // Step 6: capture the post-processing snapshot. This only runs after Close(false) above.
-            SourceFileSnapshot after = integrityValidator.Capture(job.Source);
-            job.IntegrityAfter = after;
+            // Step 6: capture the post-processing snapshot (file sources only).
+            SourceFileSnapshot? after = null;
+            SourceIntegrityValidationResult integrity = new();
+            
+            if (job.SourceKind != SourceKind.AccCloudModel && job.IntegrityStatus != SourceIntegrityStatus.NotApplicableCloudSource)
+            {
+                try
+                {
+                    after = integrityValidator.Capture(job.LocalFilePath!);
+                    job.IntegrityAfter = after;
 
-            // Step 7: compare integrity.
-            SourceIntegrityValidationResult integrity = integrityValidator.Compare(before, after);
-            job.IntegrityStatus = integrity.Status;
-            job.IntegrityMessage = integrity.Message;
+                    // Step 7: compare integrity.
+                    integrity = integrityValidator.Compare(before!, after);
+                    job.IntegrityStatus = integrity.Status;
+                    job.IntegrityMessage = integrity.Message;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to capture post-close integrity snapshot for {Source}", job.Source);
+                    job.Warnings = (job.Warnings ?? "") + $"; Post-close integrity check failed: {ex.Message}";
+                    // Preserve export result even if integrity check fails
+                }
+            }
 
             // Step 8: finalize job status/result and report.
-            return Finalize(job, result, integrity, log);
+            return Finalize(job, result, integrity, log, primaryException, closeException);
         }
 
-        private static Result Finalize(Job job, Result exportResult, SourceIntegrityValidationResult integrity, Action<string> log)
+        private static Result Finalize(Job job, Result exportResult, SourceIntegrityValidationResult integrity, Action<string> log, Exception? primaryException, Exception? closeException)
         {
+            // Preserve both primary and cleanup exceptions in error reporting
+            string? combinedError = null;
+            
+            if (primaryException != null)
+            {
+                combinedError = primaryException.Message;
+                if (closeException != null)
+                {
+                    combinedError += $"; Cleanup error: {closeException.Message}";
+                }
+            }
+            else if (closeException != null)
+            {
+                combinedError = $"Cleanup error: {closeException.Message}";
+            }
+
             if (integrity.Status == SourceIntegrityStatus.Fail)
             {
                 job.State = State.Failed;
                 job.Error = integrity.Message;
 
-                if (!exportResult.Ok)
+                if (!exportResult.Ok && !string.IsNullOrEmpty(exportResult.Error))
                 {
                     job.Warnings = Append(job.Warnings, "Original export error: " + exportResult.Error);
                 }
@@ -128,14 +195,23 @@ namespace SAUDICO.Federate.Export
                 }
             }
 
+            // Use combined error if available, otherwise fall back to export result
+            string? finalError = combinedError ?? exportResult.Error;
+            
             if (!exportResult.Ok && !exportResult.Skipped)
             {
                 job.State = State.Failed;
-                job.Error = exportResult.Error;
+                job.Error = finalError;
             }
             else if (exportResult.Skipped)
             {
                 job.State = State.Skipped;
+            }
+            else if (!string.IsNullOrEmpty(combinedError))
+            {
+                // Export succeeded but cleanup failed - mark as warning
+                job.State = State.Succeeded;
+                job.Warnings = Append(job.Warnings, combinedError);
             }
             else
             {
@@ -157,13 +233,14 @@ namespace SAUDICO.Federate.Export
             return string.IsNullOrEmpty(existing) ? addition : existing + " | " + addition;
         }
 
-        private static string OpeningPolicy(ModelKind kind)
+        private static string OpeningPolicy(SourceKind kind)
         {
             return kind switch
             {
-                ModelKind.Central => "DetachAndPreserveWorksets",
-                ModelKind.WorksharedLocal => "OpenAllWorksets",
-                _ => "Normal"
+                SourceKind.FileCentral => "DetachAndPreserveWorksets",
+                SourceKind.AccCloudModel => "DoNotDetach_OpenAllWorksets",
+                SourceKind.LocalFile => "Normal",
+                _ => "Unknown"
             };
         }
     }
