@@ -5,10 +5,115 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify no ACC project
+      
+      - name: Verify ACC project isolation
         shell: pwsh
         run: |
-          if (Get-ChildItem -Recurse -File | Select-String -SimpleMatch "Federate cloud module") { throw "ACC reference detected" }
+          $ErrorActionPreference = "Stop"
+
+          $accProject = "src/SAUDICO.Federate.ACC/SAUDICO.Federate.ACC.csproj"
+
+          if (-not (Test-Path -LiteralPath $accProject)) {
+            throw "ACC project is missing: $accProject"
+          }
+
+          $forbiddenPatterns = @(
+            "Autodesk.Revit.DB",
+            "Autodesk.Revit.UI",
+            "RevitAPI.dll",
+            "RevitAPIUI.dll",
+            "<ProjectReference Include="".*Revit2024",
+            "<ProjectReference Include="".*Revit2025",
+            "<ProjectReference Include="".*Export"
+          )
+
+          $accFiles = Get-ChildItem `
+            -LiteralPath "src/SAUDICO.Federate.ACC" `
+            -Recurse `
+            -File `
+            -Include *.cs,*.csproj
+
+          foreach ($pattern in $forbiddenPatterns) {
+            $matches = $accFiles | Select-String -Pattern $pattern
+
+            if ($matches) {
+              $matches | ForEach-Object {
+                Write-Error "$($_.Path):$($_.LineNumber): $($_.Line.Trim())"
+              }
+
+              throw "ACC isolation violation detected: $pattern"
+            }
+          }
+
+          Write-Host "ACC project exists and remains isolated from Revit API."
+
+      - name: Verify no Revit model write operations
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $patterns = @(
+            "Document\.Save\(",
+            "Document\.SaveAs\(",
+            "\.SaveCloudModel\(",
+            "\.SaveAsCloudModel\(",
+            "\.SynchronizeWithCentral\(",
+            "\.RelinquishOwnership\(",
+            "\.Publish\("
+          )
+
+          $sourceFiles = Get-ChildItem `
+            -LiteralPath "src" `
+            -Recurse `
+            -File `
+            -Include *.cs `
+            -Exclude *.Designer.cs
+
+          $excludedPaths = @(
+            "bin",
+            "obj",
+            ".git",
+            "logs",
+            "archives"
+          )
+
+          foreach ($pattern in $patterns) {
+            $matches = $sourceFiles | Where-Object {
+              $path = $_.FullName
+              $isExcluded = $false
+              foreach ($excluded in $excludedPaths) {
+                if ($path -like "*\$excluded\*" -or $path -like "*\$excluded/*") {
+                  $isExcluded = $true
+                  break
+                }
+              }
+              return -not $isExcluded
+            } | Select-String -Pattern $pattern
+
+            if ($matches) {
+              $matches | ForEach-Object {
+                Write-Error "$($_.Path):$($_.LineNumber): $($_.Line.Trim())"
+              }
+
+              throw "Forbidden Revit model-write API detected: $pattern"
+            }
+          }
+
+          Write-Host "No forbidden Revit model-write APIs detected."
+
       - name: Verify project XML
         shell: pwsh
-        run: Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object { [xml](Get-Content $_.FullName) | Out-Null }
+        run: |
+          Get-ChildItem -Recurse -Filter *.csproj | 
+            Where-Object {
+              $path = $_.FullName
+              -not ($path -like "*\bin\*" -or $path -like "*\obj\*" -or $path -like "*\.git\*")
+            } |
+            ForEach-Object {
+              try {
+                [xml](Get-Content $_.FullName -Raw) | Out-Null
+                Write-Host "Valid: $($_.Name)"
+              } catch {
+                throw "Invalid XML in $($_.FullName): $($_.Exception.Message)"
+              }
+            }
