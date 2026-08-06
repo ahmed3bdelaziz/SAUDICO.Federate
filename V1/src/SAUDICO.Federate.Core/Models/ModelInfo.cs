@@ -1,2 +1,0 @@
-using SAUDICO.Federate.Shared;namespace SAUDICO.Federate.Core.Models;
-public sealed class ModelInfo { public string FilePath{get;set;}=""; public ModelType Type{get;set;} public string? ProjectGuid{get;set;} public string? ModelGuid{get;set;} public CloudRegion Region{get;set;}=CloudRegion.EMEA; public string DisplayName=>Type==ModelType.ACC?(string.IsNullOrWhiteSpace(FilePath)?ModelGuid??"ACC Model":FilePath):System.IO.Path.GetFileName(FilePath); }

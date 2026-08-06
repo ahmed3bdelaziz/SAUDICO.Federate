@@ -1,2 +1,0 @@
-using System;using System.IO;namespace SAUDICO.Federate.Shared;
-public static class PathHelper { public static string Output(string input,string folder){if(string.IsNullOrWhiteSpace(input))throw new ArgumentException("Input is required.");if(string.IsNullOrWhiteSpace(folder))throw new ArgumentException("Output folder is required.");return Path.Combine(folder,Path.GetFileNameWithoutExtension(input)+".nwc");} }

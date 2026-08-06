@@ -1,2 +1,0 @@
-namespace SAUDICO.Federate.Shared;
-public static class Constants { public const string Product="SAUDICO Federate"; public const string RibbonTab="SAUDICO BIM"; public const string RibbonPanel="Federation"; public const string Command="Federation Manager"; public const string TempViewPrefix="SAUDICO-TEMP-NAVIS"; public const string SupportEmail="ahmed.abdelaziz@saudico-tech.com"; public const string Website="https://www.saudico.com.sa/"; }

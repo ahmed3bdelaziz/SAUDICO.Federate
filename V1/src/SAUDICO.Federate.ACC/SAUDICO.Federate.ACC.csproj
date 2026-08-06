@@ -1,1 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><RequiresRevitApi>true</RequiresRevitApi></PropertyGroup><ItemGroup><ProjectReference Include="..\SAUDICO.Federate.Core\SAUDICO.Federate.Core.csproj"/><ProjectReference Include="..\SAUDICO.Federate.Shared\SAUDICO.Federate.Shared.csproj"/></ItemGroup></Project>
