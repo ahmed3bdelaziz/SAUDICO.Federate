@@ -6,6 +6,9 @@
     <None Update="SAUDICO.Federate.Revit2024.addin" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="SAUDICO.Federate.Revit2024.addin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="System.Security" />
   </ItemGroup>
 </Project>
