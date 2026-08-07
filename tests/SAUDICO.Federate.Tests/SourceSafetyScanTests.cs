@@ -43,7 +43,7 @@ public sealed class SourceSafetyScanTests
     public void NoForbiddenRevitWriteApiIsCalledAnywhereInSrc(string forbidden)
     {
         List<string> offenders = SourceFiles()
-            .Where(path => File.ReadAllText(path).Contains(forbidden, StringComparison.Ordinal))
+            .Where(path => File.ReadAllText(path).IndexOf(forbidden, StringComparison.Ordinal) >= 0)
             .ToList();
 
         Assert.True(offenders.Count == 0,
@@ -60,7 +60,7 @@ public sealed class SourceSafetyScanTests
         string[] forbidden = { "SaveOptions", "SaveAsOptions" };
 
         List<string> offenders = SourceFiles()
-            .Where(path => forbidden.Any(f => File.ReadAllText(path).Contains(f, StringComparison.Ordinal)))
+            .Where(path => forbidden.Any(f => File.ReadAllText(path).IndexOf(f, StringComparison.Ordinal) >= 0))
             .ToList();
 
         Assert.True(offenders.Count == 0,

@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RevitApi>true</RevitApi>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Shared\Shared.csproj" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />

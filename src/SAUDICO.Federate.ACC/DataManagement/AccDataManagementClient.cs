@@ -144,7 +144,11 @@ public sealed class AccDataManagementClient : IAccDataManagementClient
             foreach (AccBrowseNode node in outcome.Results)
             {
                 // Deduplicate by stable item identity, never by display name.
-                merged.TryAdd(node.ItemId ?? node.Id, node);
+                string key = node.ItemId ?? node.Id;
+                if (!merged.ContainsKey(key))
+                {
+                    merged.Add(key, node);
+                }
             }
         }
 

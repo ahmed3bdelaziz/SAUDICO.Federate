@@ -188,7 +188,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
             return Task.CompletedTask;
         }
 
-        AccPathLevel? parent = path.Count > 0 ? path[^1] : null;
+        AccPathLevel? parent = path.Count > 0 ? path[path.Count - 1] : null;
 
         AccPathLevel next = node.Kind switch
         {
@@ -248,7 +248,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
             return LoadAsync(client.GetHubsAsync);
         }
 
-        AccPathLevel current = path[^1];
+        AccPathLevel current = path[path.Count - 1];
         return current.Kind switch
         {
             AccNodeKind.Hub => LoadAsync(ct => client.GetProjectsAsync(current.HubId!, ct)),
@@ -307,7 +307,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
             return false;
         }
 
-        AccPathLevel current = path[^1];
+        AccPathLevel current = path[path.Count - 1];
         return SearchScope switch
         {
             AccSearchScope.CurrentFolderAndSubfolders => current.Kind == AccNodeKind.Folder && current.ProjectId != null && current.FolderId != null,
@@ -323,7 +323,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
             return Task.CompletedTask;
         }
 
-        AccPathLevel current = path[^1];
+        AccPathLevel current = path[path.Count - 1];
 
         return SearchScope switch
         {
@@ -400,7 +400,7 @@ public sealed class AccBrowseViewModel : INotifyPropertyChanged, IDisposable
         Items.Clear();
         IEnumerable<AccBrowseNode> filtered = string.IsNullOrWhiteSpace(SearchText)
             ? loadedUnfiltered
-            : loadedUnfiltered.Where(n => n.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            : loadedUnfiltered.Where(n => n.Name.IndexOf(SearchText, StringComparison.OrdinalIgnoreCase) >= 0);
 
         foreach (AccBrowseNode node in filtered)
         {

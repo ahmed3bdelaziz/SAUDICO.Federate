@@ -114,7 +114,8 @@ internal sealed class FakeBinaryDownloader : IAccBinaryDownloader
     public async Task DownloadToFileAsync(string url, string destinationPath, IProgress<long>? progress, CancellationToken ct)
     {
         RequestedUrl = url;
-        await File.WriteAllBytesAsync(destinationPath, payload, ct);
+        ct.ThrowIfCancellationRequested();
+        File.WriteAllBytes(destinationPath, payload);
         progress?.Report(payload.Length);
     }
 }
@@ -222,7 +223,7 @@ public sealed class HttpAccBinaryDownloaderTests
             HttpAccBinaryDownloader downloader = new(new HttpClient(new StubHandler(payload)));
             await downloader.DownloadToFileAsync("https://s3.example/signed", path, null, CancellationToken.None);
 
-            Assert.Equal(payload, await File.ReadAllBytesAsync(path));
+            Assert.Equal(payload, File.ReadAllBytes(path));
         }
         finally
         {
