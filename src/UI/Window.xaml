@@ -127,7 +127,12 @@
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#D7DEE8" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10">
-                <WrapPanel VerticalAlignment="Center">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="300" />
+                    </Grid.ColumnDefinitions>
+                    <WrapPanel VerticalAlignment="Center">
                     <Button Content="＋ Add RVT Files" Click="Add" />
                     <Button Content="Remove" Click="Remove" />
                     <Button Content="Clear" Click="Clear" />
@@ -136,7 +141,9 @@
                     <CheckBox Content="Overwrite Existing NWC" IsChecked="{Binding Settings.Overwrite}" Margin="12,4" />
                     <CheckBox Content="Enable Export Log" IsChecked="{Binding Settings.Log}" Margin="12,4" />
                     <CheckBox Content="Create CSV Export Report" IsChecked="{Binding Settings.Csv}" Margin="12,4" />
-                </WrapPanel>
+                    </WrapPanel>
+                    <ContentControl x:Name="AuthHost" Grid.Column="1" Margin="10,0,0,0" />
+                </Grid>
             </Border>
 
             <DataGrid x:Name="GridJobs" Grid.Row="1" ItemsSource="{Binding Jobs}"
