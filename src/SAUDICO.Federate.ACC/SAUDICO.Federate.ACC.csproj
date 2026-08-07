@@ -14,6 +14,7 @@
   
   <ItemGroup Condition="'$(RevitYear)'=='2024'">
     <Reference Include="System.Security" />
+    <Reference Include="System.Net.Http" />
   </ItemGroup>
   
   <ItemGroup Condition="'$(RevitYear)'!='2024'">
