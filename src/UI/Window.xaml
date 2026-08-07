@@ -146,7 +146,7 @@
                 </Grid>
             </Border>
 
-            <DataGrid x:Name="GridJobs" Grid.Row="1" ItemsSource="{Binding Jobs}"
+            <DataGrid x:Name="GridJobs" Grid.Row="2" ItemsSource="{Binding Jobs}"
                       AutoGenerateColumns="False" CanUserAddRows="False"
                       IsReadOnly="True" AlternationCount="2" Margin="0,0,0,10">
                 <DataGrid.Columns>
@@ -208,11 +208,11 @@
                 </GroupBox>
             </Grid>
 
-            <TextBox Grid.Row="3" Text="{Binding Log}" IsReadOnly="True" TextWrapping="Wrap"
+            <TextBox Grid.Row="4" Text="{Binding Log}" IsReadOnly="True" TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto" Background="#FFFFFF" Foreground="#172033"
                      BorderBrush="#CBD5E1" Margin="0,8,0,8" />
 
-            <DockPanel Grid.Row="4">
+            <DockPanel Grid.Row="5">
                 <TextBlock Text="SAUDICO Federation Export Standard v1.0" Foreground="#667085" VerticalAlignment="Center" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Restore SAUDICO Defaults" Click="Defaults" />

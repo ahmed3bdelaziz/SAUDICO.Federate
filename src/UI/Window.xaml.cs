@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using SAUDICO.Federate.ACC.Authentication;
 using SAUDICO.Federate.Core;

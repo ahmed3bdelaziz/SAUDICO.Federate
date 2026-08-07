@@ -108,8 +108,9 @@ namespace SAUDICO.Federate.Revit2024
         {
             if (window == null)
             {
-                window = new Manager(QueueJob);
-                window.Closed += delegate { window = null; };
+                var authService = SAUDICO.Federate.ACC.Authentication.ApsAuthenticationService.CreateDefault();
+                window = new Manager(QueueJob, authService);
+                window.Closed += delegate { window?.Dispose(); window = null; };
                 new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;
                 window.Show();
             }
