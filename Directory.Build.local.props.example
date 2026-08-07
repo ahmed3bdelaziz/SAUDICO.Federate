@@ -1,0 +1,15 @@
+<Project>
+  <!-- 
+    SAUDICO Federate Local Build Overrides
+    Copy this file to 'Directory.Build.local.props' and fill in your local paths.
+    DO NOT commit the copied file to Git.
+  -->
+  <PropertyGroup>
+    <!-- Example Paths - Update to match your installation -->
+    <!-- Windows Typical: C:\Program Files\Autodesk\Revit 2024\ -->
+    <Revit2024ApiDir Condition="'$(Revit2024ApiDir)' == ''">C:\Program Files\Autodesk\Revit 2024\</Revit2024ApiDir>
+    
+    <!-- Windows Typical: C:\Program Files\Autodesk\Revit 2025\ -->
+    <Revit2025ApiDir Condition="'$(Revit2025ApiDir)' == ''">C:\Program Files\Autodesk\Revit 2025\</Revit2025ApiDir>
+  </PropertyGroup>
+</Project>
