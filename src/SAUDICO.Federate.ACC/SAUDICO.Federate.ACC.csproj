@@ -1,13 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- ACC Module must NEVER reference RevitAPI -->
+    <!-- This is enforced by architecture tests -->
+  </PropertyGroup>
+  
   <ItemGroup>
     <ProjectReference Include="..\SAUDICO.Federate.Logging\SAUDICO.Federate.Logging.csproj" />
   </ItemGroup>
+  
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
+  
   <ItemGroup Condition="'$(RevitYear)'=='2024'">
     <Reference Include="System.Security" />
   </ItemGroup>
+  
   <ItemGroup Condition="'$(RevitYear)'!='2024'">
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
