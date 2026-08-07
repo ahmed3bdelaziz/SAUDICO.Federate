@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <Revit2024ApiDir Condition="'$(Revit2024ApiDir)' == ''">C:\Program Files\Autodesk\Revit 2024\</Revit2024ApiDir>
+    <Revit2025ApiDir Condition="'$(Revit2025ApiDir)' == ''">C:\Program Files\Autodesk\Revit 2025\</Revit2025ApiDir>
+  </PropertyGroup>
+</Project>
