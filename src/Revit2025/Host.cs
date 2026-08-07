@@ -166,6 +166,38 @@ namespace SAUDICO.Federate.Revit2025
                 return;
             }
 
+            // Classify file type on Revit API thread using BasicFileInfo.Extract
+            // This avoids calling Revit API from UI thread while properly detecting central models
+            if (item.Job.SourceKind == SourceKind.LocalFile && !string.IsNullOrEmpty(item.Job.LocalFilePath))
+            {
+                try
+                {
+                    var fileInfo = Autodesk.Revit.DB.BasicFileInfo.Extract(item.Job.LocalFilePath);
+                    if (fileInfo != null)
+                    {
+                        if (fileInfo.IsCentral)
+                        {
+                            item.Job.SourceKind = SourceKind.FileCentral;
+                            item.Log($"Detected as central model: {item.Job.Name}");
+                        }
+                        else if (fileInfo.IsWorkshared)
+                        {
+                            item.Job.SourceKind = SourceKind.FileCentral;
+                            item.Log($"Detected as workshared local copy: {item.Job.Name}");
+                        }
+                        else
+                        {
+                            item.Log($"Detected as local model: {item.Job.Name}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    item.Log($"Warning: Could not classify {item.Job.Name}: {ex.Message}");
+                    // Continue with LocalFile assumption
+                }
+            }
+
             SAUDICO.Federate.Core.Result result =
                 Engine.Run(item.Job, application.Application, item.Log);
 

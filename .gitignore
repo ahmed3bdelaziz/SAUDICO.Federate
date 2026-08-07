@@ -1,44 +1,35 @@
-# Compiled and build artifacts
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
-
-# Dependencies
+```gitignore
+# Build artifacts
 bin/
 obj/
-*.userprefs
+*.dll
+*.exe
+*.pdb
+*.nupkg
 
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-
-# Coverage reports
-coverage/
-htmlcov/
-*.coverage
-
-# Build outputs
-Debug/
-Release/
-x64/
-x86/
-build/
-dist/
-
-# Package manager caches
-.nuget/
+# Dependencies
 packages/
+node_modules/
+vendor/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vs/
+.idea/
+*.swp
+*.swo
+
+# Configuration files (if not intended for sharing)
+appsettings*.json
+config.json
+
+# Temp files
+*.tmp
+*.temp
+```
