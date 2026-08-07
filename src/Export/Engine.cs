@@ -25,10 +25,10 @@ namespace SAUDICO.Federate.Export
             job.Start = DateTime.Now;
             Result result;
 
+            SourceFileSnapshot? before = null;
             try
             {
                 // Step 1: capture the source snapshot before the document is opened (file sources only).
-                SourceFileSnapshot? before = null;
                 if (job.SourceKind != SourceKind.AccCloudModel)
                 {
                     try
@@ -62,7 +62,7 @@ namespace SAUDICO.Federate.Export
                 // Step 2: open the document using the safety-verified opening policy.
                 job.State = State.Opening;
                 log("Opening model");
-                document = Opener.Open(job, application);
+                document = RevitDocumentOpener.Open(job, application);
 
                 // Step 3: prepare the temporary federation view.
                 job.State = State.Preparing;
@@ -394,7 +394,7 @@ namespace SAUDICO.Federate.Export
             return
                 (settings.ExRoom && categoryId == (long)BuiltInCategory.OST_RoomSeparationLines) ||
                 (settings.ExArea && categoryId == (long)BuiltInCategory.OST_AreaSchemeLines) ||
-                (settings.ExSpace && categoryId == (long)BuiltInCategory.OST_SpaceSeparationLines);
+                (settings.ExSpace && categoryId == (long)BuiltInCategory.OST_MEPSpaces);
         }
 
         private static long GetElementIdValue(ElementId id)

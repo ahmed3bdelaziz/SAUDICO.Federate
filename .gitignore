@@ -15,9 +15,17 @@ vendor/
 # Logs
 *.log
 
+<<<<<<< Updated upstream
 # OS generated files
 .DS_Store
 Thumbs.db
+=======
+# Environment
+.env
+.env.local
+Directory.Build.local.props
+*.env.*
+>>>>>>> Stashed changes
 
 # Editor files
 .vs/
@@ -29,7 +37,21 @@ Thumbs.db
 appsettings*.json
 config.json
 
+<<<<<<< Updated upstream
 # Temp files
 *.tmp
 *.temp
 ```
+=======
+# Build outputs
+Debug/
+Release/
+x64/
+x86/
+build/
+dist/
+
+# Package manager caches
+.nuget/
+packages/
+>>>>>>> Stashed changes

@@ -14,18 +14,66 @@ public enum SourceKind
     AccCloudModel   // Autodesk Construction Cloud cloud model
 }
 
-/// <summary>
-/// Descriptor for ACC cloud models containing required identifiers
-/// </summary>
+/// <summary>ACC browsing and audit identifiers. These values are strings and are never parsed as GUIDs.</summary>
+public sealed class AccSelection
+{
+    public string HubId { get; init; } = string.Empty;
+    public string AccProjectId { get; init; } = string.Empty;
+    public string FolderId { get; init; } = string.Empty;
+    public string ItemId { get; init; } = string.Empty;
+    public string VersionId { get; init; } = string.Empty;
+    public string StorageUrn { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string VersionNumber { get; init; } = string.Empty;
+    public DateTimeOffset? VersionModifiedAt { get; init; }
+}
+
+/// <summary>Verified identity used exclusively to construct a Revit cloud ModelPath.</summary>
+public sealed class RevitCloudIdentity
+{
+    public string Region { get; init; } = string.Empty;
+    public Guid RevitProjectGuid { get; init; }
+    public Guid RevitModelGuid { get; init; }
+
+    public bool IsValid => !string.IsNullOrWhiteSpace(Region)
+        && RevitProjectGuid != Guid.Empty
+        && RevitModelGuid != Guid.Empty;
+}
+
+/// <summary>Combines ACC audit metadata with a separately verified Revit cloud identity.</summary>
 public sealed class AccCloudDescriptor
 {
-    public string Region { get; set; } = "";           // e.g., "US", "EMEA"
-    public Guid ProjectGuid { get; set; }              // BIM 360/ACC Project ID
-    public Guid ModelGuid { get; set; }                // BIM 360/ACC Model ID
-    public string? VersionGuid { get; set; }           // Optional specific version
-    public string DisplayName { get; set; } = "";      // Human-readable name for UI
-    
-    public override string ToString() => $"{DisplayName} ({ModelGuid:N})";
+    public AccSelection Selection { get; init; } = new();
+    public RevitCloudIdentity RevitIdentity { get; init; } = new();
+    public string IdentityResolutionMethod { get; init; } = string.Empty;
+    public string IdentityResolutionEvidence { get; init; } = string.Empty;
+
+    public string DisplayName => Selection.DisplayName;
+
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(RevitIdentity.Region))
+            throw new InvalidOperationException("ACC cloud descriptor is missing Region.");
+        if (RevitIdentity.RevitProjectGuid == Guid.Empty)
+            throw new InvalidOperationException("ACC cloud descriptor is missing a verified Revit Project GUID.");
+        if (RevitIdentity.RevitModelGuid == Guid.Empty)
+            throw new InvalidOperationException("ACC cloud descriptor is missing a verified Revit Model GUID.");
+    }
+
+    public override string ToString() => $"{DisplayName} ({RevitIdentity.RevitModelGuid:N})";
+}
+
+public sealed class FileSourceDescriptor
+{
+    public string Path { get; init; } = string.Empty;
+    public bool IsCentral { get; init; }
+}
+
+public sealed class SourceDescriptor
+{
+    public SourceKind Kind { get; init; }
+    public FileSourceDescriptor? File { get; init; }
+    public AccCloudDescriptor? Cloud { get; init; }
 }
 
 /// <summary>
@@ -94,7 +142,16 @@ public sealed class Job
     public AccCloudDescriptor? CloudDescriptor { get; set; }  // For AccCloudModel
     
     // Legacy compatibility property - returns LocalFilePath or CloudDescriptor.DisplayName
-    public string Source => LocalFilePath ?? CloudDescriptor?.DisplayName ?? "";
+    public string Source
+    {
+        get => LocalFilePath ?? CloudDescriptor?.DisplayName ?? "";
+        set
+        {
+            LocalFilePath = value;
+            CloudDescriptor = null;
+            SourceKind = SourceKind.LocalFile;
+        }
+    }
     
     // === Output Configuration ===
     public string OutputFolder { get; set; } = "";
@@ -181,23 +238,8 @@ public sealed class Job
                 return false;
             }
             
-            if (string.IsNullOrEmpty(CloudDescriptor.Region))
-            {
-                errorMessage = "Region is required for ACC cloud models";
-                return false;
-            }
-            
-            if (CloudDescriptor.ProjectGuid == Guid.Empty)
-            {
-                errorMessage = "Project GUID is required for ACC cloud models";
-                return false;
-            }
-            
-            if (CloudDescriptor.ModelGuid == Guid.Empty)
-            {
-                errorMessage = "Model GUID is required for ACC cloud models";
-                return false;
-            }
+            try { CloudDescriptor.Validate(); }
+            catch (InvalidOperationException ex) { errorMessage = ex.Message; return false; }
         }
         
         return true;

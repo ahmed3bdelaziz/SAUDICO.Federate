@@ -13,7 +13,7 @@ public sealed class SourceFileSnapshot
     public DateTime CapturedAtUtc { get; set; }
 }
 
-public enum SourceIntegrityStatus { Pass, Warning, Fail }
+public enum SourceIntegrityStatus { Pass, Warning, Fail, NotApplicableCloudSource }
 
 public sealed class SourceIntegrityValidationResult
 {

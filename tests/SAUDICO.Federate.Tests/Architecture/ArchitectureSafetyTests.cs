@@ -49,7 +49,7 @@ public class ArchitectureSafetyTests
             var found = referencedAssemblies.Any(r => r.Name.Contains(forbidden));
             Assert.False(found, 
                 $"{AccAssemblyName} must not reference {forbidden}. " +
-                $"Found references: {string.Join(\", \", referencedAssemblies.Select(r => r.Name))}");
+                $"Found references: {string.Join(", ", referencedAssemblies.Select(r => r.Name))}");
         }
     }
 

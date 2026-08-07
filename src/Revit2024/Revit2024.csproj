@@ -3,6 +3,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\config\apssettings.json" Link="config\apssettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="SAUDICO.Federate.Revit2024.addin" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Security" />

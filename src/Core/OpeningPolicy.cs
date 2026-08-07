@@ -1,79 +1,35 @@
-using System;
-using System.IO;
+namespace SAUDICO.Federate.Core;
 
-namespace SAUDICO.Federate.Core
+/// <summary>Pure domain policy for opening a source document; contains no Revit API types.</summary>
+public sealed class OpenPlan
 {
-    /// <summary>
-    /// Pure domain policy for determining how to open a source document.
-    /// Contains NO Revit API references.
-    /// Maps to Revit DetachFromCentralOption in the adapter layer.
-    /// </summary>
-    public static class SourceOpeningPolicy
+    public SourceKind SourceKind { get; init; }
+    public DetachStrategy DetachStrategy { get; init; }
+    public WorksetStrategy WorksetStrategy { get; init; }
+    public bool VerifyIdentityAfterOpen { get; init; }
+
+    public static OpenPlan ForLocalFile() => new()
     {
-        /// <summary>
-        /// Determines the opening strategy based on source kind.
-        /// Returns pure domain data only.
-        /// </summary>
-        public static SourceOpeningResult GetOpenPlan(SourceKind kind, string? localPath = null, AccCloudDescriptor? cloudDescriptor = null)
-        {
-            return kind switch
-            {
-                SourceKind.LocalFile => CreateLocalPlan(localPath),
-                SourceKind.FileCentral => CreateCentralPlan(localPath),
-                SourceKind.AccCloudModel => CreateCloudPlan(cloudDescriptor),
-                _ => throw new ArgumentOutOfRangeException(nameof(kind), $"Unknown source kind: {kind}")
-            };
-        }
+        SourceKind = SourceKind.LocalFile,
+        DetachStrategy = DetachStrategy.None,
+        WorksetStrategy = WorksetStrategy.Default
+    };
 
-        private static SourceOpeningResult CreateLocalPlan(string? path)
-        {
-            if (string.IsNullOrEmpty(path))
-                throw new ArgumentException("Local file path required for LocalFile source.", nameof(path));
+    public static OpenPlan ForFileCentral() => new()
+    {
+        SourceKind = SourceKind.FileCentral,
+        DetachStrategy = DetachStrategy.DetachAndPreserveWorksets,
+        WorksetStrategy = WorksetStrategy.OpenAll
+    };
 
-            if (!File.Exists(path))
-                throw new FileNotFoundException($"Local source file not found: {path}", path);
-
-            return new SourceOpeningResult
-            {
-                Kind = SourceKind.LocalFile,
-                LocalFilePath = path,
-                DetachPolicy = "None",
-                WorksetPolicy = "PreserveOpenedVisibility"
-            };
-        }
-
-        private static SourceOpeningResult CreateCentralPlan(string? path)
-        {
-            if (string.IsNullOrEmpty(path))
-                throw new ArgumentException("Central file path required for FileCentral source.", nameof(path));
-
-            if (!File.Exists(path))
-                throw new FileNotFoundException($"Central file not found: {path}", path);
-
-            return new SourceOpeningResult
-            {
-                Kind = SourceKind.FileCentral,
-                LocalFilePath = path,
-                DetachPolicy = "DetachAndPreserveWorksets",
-                WorksetPolicy = "OpenAllWorksets"
-            };
-        }
-
-        private static SourceOpeningResult CreateCloudPlan(AccCloudDescriptor? descriptor)
-        {
-            if (descriptor == null)
-                throw new ArgumentNullException(nameof(descriptor), "Cloud descriptor required for AccCloudModel source.");
-
-            // CRITICAL: Validate Revit identity BEFORE attempting to open
-            descriptor.Validate();
-
-            return new SourceOpeningResult
-            {
-                Kind = SourceKind.AccCloudModel,
-                CloudDescriptor = descriptor,
-                DetachPolicy = "DoNotDetach",
-                WorksetPolicy = "OpenAllWorksets"
-            };
-        }
-    }
+    public static OpenPlan ForAccCloud() => new()
+    {
+        SourceKind = SourceKind.AccCloudModel,
+        DetachStrategy = DetachStrategy.DoNotDetach,
+        WorksetStrategy = WorksetStrategy.OpenAll,
+        VerifyIdentityAfterOpen = true
+    };
 }
+
+public enum DetachStrategy { None, DetachAndPreserveWorksets, DoNotDetach }
+public enum WorksetStrategy { Default, OpenAll, Custom }
