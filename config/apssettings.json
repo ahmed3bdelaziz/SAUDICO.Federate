@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "environment": "Development",
-  "enabled": false,
-  "clientId": "",
-  "callbackUri": "http://localhost:8080/",
+  "enabled": true,
+  "clientId": "FJMwYAIgH6g9YuUjrHW0oGUGAPD9mZEqSu0XlIY3OqnjoM4W",
+  "callbackUri": "http://localhost:3000/callback",
   "authorizationEndpoint": "https://developer.api.autodesk.com/authentication/v2/authorize",
   "tokenEndpoint": "https://developer.api.autodesk.com/authentication/v2/token",
   "userProfileEndpoint": "https://api.userprofile.autodesk.com/userinfo",
